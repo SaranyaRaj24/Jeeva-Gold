@@ -122,7 +122,7 @@ const Billing = () => {
     setSelectedBill(bill);
     setSelectedCustomer(customers.find((c) => c.id === bill.customerId));
     setGoldRate(bill.goldRate.toString());
-    setHallmarkCharges(displayHallmarkCharges);
+    setHallmarkCharges(bill.hallmarkBalance.toString());
     setBillItems(
       bill.items.map((item) => ({
         id: item.id || Date.now().toString(),
