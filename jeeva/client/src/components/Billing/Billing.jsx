@@ -19,6 +19,9 @@ import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import "./Billing.css";
 import { MdDeleteForever } from "react-icons/md";
 import { BACKEND_SERVER_URL } from "../../Config/Config";
+import BillDetails from "./BillDetails";
+import ReceivedDetails from "./ReceivedDetails";
+import ViewBill from "./ViewBill";
 
 const Billing = () => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -28,8 +31,8 @@ const Billing = () => {
   const [time, setTime] = useState("");
   const [goldRate, setGoldRate] = useState("");
   const [hallmarkCharges, setHallmarkCharges] = useState(0);
-
-
+  const [displayHallmarkCharges, setDisplayHallmarkCharges] = useState(0);
+  
   const [rows, setRows] = useState([
     {
       date: new Date().toISOString().slice(0, 10),
@@ -38,56 +41,49 @@ const Billing = () => {
       touch: "",
       purityWeight: "",
       amount: "",
+      mode: "", 
     },
   ]);
+
+  const [pureBalance, setPureBalance] = useState(0);
+  const [totalBalance, setTotalBalance] = useState(0);
+  const [hallmarkBalance, setHallmarkBalance] = useState(0);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState(false);
   const [fetchedBills, setFetchedBills] = useState([]);
   const [selectedBill, setSelectedBill] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
-
   const [openAddItem, setOpenAddItem] = useState(false);
-  const [newItem, setNewItem] = useState({
-    name: "",
-    no: "",
-    percentage: "",
-    weight: "",
-    pure: "",
-    touch: "",
-  });
-
-  const [customers, setCustomers] = useState([]);
-  const [stockData, setStockData] = useState([]);
-  const [stockError, setStockError] = useState(null);
-  const [availableStock, setAvailableStock] = useState(0);
-  const [latestBill, setLatestBill] = useState(null);
-
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "success",
   });
 
+  const [customers, setCustomers] = useState([]);
+  const [stockData, setStockData] = useState([]);
+  const [latestBill, setLatestBill] = useState(null);
   const billRef = useRef(null);
-  const [displayHallmarkCharges, setDisplayHallmarkCharges] = useState(0);
 
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const customersResponse = await fetch(
-          `${BACKEND_SERVER_URL}/api/customers`
-        );
-        const customersData = await customersResponse.json();
+        const [customersRes, stocksRes, billsRes] = await Promise.all([
+          fetch(`${BACKEND_SERVER_URL}/api/customers`),
+          fetch(`${BACKEND_SERVER_URL}/api/v1/stocks`),
+          fetch(`${BACKEND_SERVER_URL}/api/bills`)
+        ]);
+
+        const [customersData, stocksData, billsData] = await Promise.all([
+          customersRes.json(),
+          stocksRes.json(),
+          billsRes.json()
+        ]);
+
         setCustomers(customersData);
-
-        const stocksResponse = await fetch(
-          `${BACKEND_SERVER_URL}/api/v1/stocks`
-        );
-        const stocksData = await stocksResponse.json();
         setStockData(stocksData);
-
-        const billsResponse = await fetch(`${BACKEND_SERVER_URL}/api/bills`);
-        const billsData = await billsResponse.json();
+        
         const latest = billsData.length > 0 ? billsData[0] : null;
         setLatestBill(latest);
         setBillNo(latest ? `BILL-${parseInt(latest.id) + 1}` : "BILL-1");
@@ -101,10 +97,62 @@ const Billing = () => {
   }, []);
 
   useEffect(() => {
-    if (newItem.percentage) {
-      checkStockAvailability();
+    if (billItems.length > 0) {
+      const totalPurity = billItems.reduce(
+        (sum, item) => sum + parseFloat(item.purity || 0),
+        0
+      );
+      const totalAmount = billItems.reduce((sum, item) => {
+        const itemGoldRate = parseFloat(item.goldRate);
+        if (!isNaN(itemGoldRate) && itemGoldRate > 0) {
+          return sum + itemGoldRate * (parseFloat(item.purity) || 0);
+        }
+        return sum;
+      }, 0);
+
+      setPureBalance(totalPurity.toFixed(3));
+      setTotalBalance((totalAmount + parseFloat(hallmarkCharges || 0)).toFixed(2));
+      setHallmarkBalance(parseFloat(hallmarkCharges || 0).toFixed(2));
+    } else {
+      setPureBalance(0);
+      setTotalBalance(0);
+      setHallmarkBalance(0);
     }
-  }, [newItem.percentage, newItem.name, newItem.no]);
+  }, [billItems, hallmarkCharges]);
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setDate(now.toLocaleDateString("en-IN"));
+      setTime(
+        now.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+      );
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (viewMode && selectedBill) {
+      setDisplayHallmarkCharges(selectedBill.hallmarkCharges || 0);
+    } else if (!selectedBill && !viewMode) {
+      setDisplayHallmarkCharges(0);
+      setHallmarkCharges(0);
+    }
+  }, [viewMode, selectedBill]);
+
+  const showSnackbar = (message, severity = "success") => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   const fetchBills = async () => {
     try {
@@ -119,13 +167,12 @@ const Billing = () => {
   };
 
   const viewBill = (bill) => {
-    console.log("aksh", bill);
-
     setViewMode(true);
     setSelectedBill(bill);
     setSelectedCustomer(customers.find((c) => c.id === bill.customerId));
     setGoldRate(bill.goldRate.toString());
     setHallmarkCharges(bill.hallmarkBalance.toString());
+    
     setBillItems(
       bill.items.map((item) => ({
         id: item.id || Date.now().toString(),
@@ -153,449 +200,57 @@ const Billing = () => {
         touch: detail.touch?.toString() || "",
         purityWeight: detail.purityWeight.toString(),
         amount: detail.amount?.toString(),
+        mode: detail.amount ? "amount" : "weight",
       }))
     );
 
     setBillNo(`BILL-${bill.id}`);
   };
 
-  const handleDeleteBill = async (billId) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this bill? This action cannot be undone."
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `${BACKEND_SERVER_URL}/api/bills/${billId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to delete bill");
-      }
-
-      showSnackbar("Bill deleted successfully!", "success");
-
-      const updatedBills = fetchedBills.filter((bill) => bill.id !== billId);
-      setFetchedBills(updatedBills);
-
-      if (selectedBill && selectedBill.id === billId) {
-        resetForm();
-      }
-    } catch (error) {
-      console.error("Error:", error);
-      showSnackbar(error.message || "Failed to delete bill", "error");
-    }
-  };
-
-  const checkStockAvailability = () => {
-    if (!newItem.percentage) return;
-
-    const selectedCoin = stockData.find(
-      (item) =>
-        item.gram === parseFloat(newItem.name || 0) &&
-        item.coinType === newItem.percentage
-    );
-
-    if (selectedCoin) {
-      setAvailableStock(selectedCoin.quantity);
-      if (newItem.no && selectedCoin.quantity < parseInt(newItem.no)) {
-        setStockError(`Insufficient stock Available: ${selectedCoin.quantity}`);
-      } else {
-        setStockError(null);
-      }
-    } else {
-      setAvailableStock(0);
-      if (newItem.name) {
-        setStockError("No stock available for this combination");
-      }
-    }
-  };
-
-  const showSnackbar = (message, severity = "success") => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-
-  const handleAddRow = () => {
+  const resetForm = () => {
+    setBillItems([]);
     setRows([
-      ...rows,
       {
         date: new Date().toISOString().slice(0, 10),
-        goldRate: goldRate,
+        goldRate: "",
         givenGold: "",
         touch: "",
         purityWeight: "",
         amount: "",
+        mode: "",
       },
     ]);
+    setSelectedCustomer(null);
+    setGoldRate("");
+    setHallmarkCharges(0);
+    setSelectedBill(null);
+    setViewMode(false);
+    setIsSubmitting(false);
+    setIsUpdating(false);
+    setDisplayHallmarkCharges(0);
+
+    const newBillNo = latestBill
+      ? `BILL-${parseInt(latestBill.id) + 1}`
+      : "BILL-1";
+    setBillNo(newBillNo);
   };
 
-  const handleDeleteRow = (index) => {
-    const updatedRows = rows.filter((_, i) => i !== index);
-    setRows(updatedRows);
-  };
+  const handlePrint = async () => {
+    const input = billRef.current;
+    if (input) {
+      const canvas = await html2canvas(input, {
+        scale: window.devicePixelRatio || 2,
+        useCORS: true,
+        scrollY: -window.scrollY,
+      });
 
-  const handleRowChange = (index, field, value) => {
-    const updatedRows = [...rows];
-
-    if (value === "") {
-      updatedRows[index][field] = "";
-      setRows(updatedRows);
-
-      return;
-    }
-
-    updatedRows[index][field] = value;
-
-    if (field === "givenGold" || field === "touch") {
-      const givenGold = parseFloat(updatedRows[index].givenGold) || 0;
-      const touch = parseFloat(updatedRows[index].touch) || 0;
-      const purityWeight = givenGold * (touch / 100);
-      updatedRows[index].purityWeight = purityWeight.toFixed(3);
-
-      if (updatedRows[index].goldRate) {
-        const amount = purityWeight * parseFloat(updatedRows[index].goldRate);
-        updatedRows[index].amount = amount.toFixed(2);
-      }
-    } else if (field === "amount") {
-      console.log("in amount");
-      const numValue = parseFloat(value);
-      if (!isNaN(numValue)) {
-        console.log("in amount 2");
-        const hallmarkBalance = parseFloat(hallmarkCharges) || 0;
-        const purityBalance = parseFloat(pureBalance) || 0;
-        console.log("sssssss", numValue, hallmarkBalance);
-
-        if (numValue <= hallmarkBalance) {
-          setHallmarkCharges((prev) => (prev - numValue).toFixed(2));
-        } else {
-          console.log("4");
-          setHallmarkCharges(0);
-          const remainingAmount = numValue - hallmarkBalance;
-          const updatedPurity = numValue / updatedRows[index].goldRate;
-
-          const newPurity = (updatedPurity - receivedPurity).toFixed(3);
-          console.log(
-            "in amount 2",
-            newPurity,
-            purityBalance,
-            updatedPurity,
-            receivedPurity,
-            remainingAmount,
-            receivedAmount,
-            numValue
-          );
-
-          if (newPurity > 0 || updatedPurity < receivedPurity) {
-            console.log("balance", updatedPurity, purityBalance);
-            if (remainingAmount >= 0) {
-              updatedRows[index].purityWeight = updatedPurity;
-            } else {
-              showSnackbar("Amount exceeds available pure balances", "error");
-            }
-          }
-        }
-      }
-    } else if (field === "goldRate") {
-      const goldRateVal = parseFloat(value) || 0;
-      if (updatedRows[index].givenGold && updatedRows[index].touch) {
-        const givenGold = parseFloat(updatedRows[index].givenGold) || 0;
-        const touch = parseFloat(updatedRows[index].touch) || 0;
-        const purityWeight = givenGold * (touch / 100);
-        const amount = purityWeight * goldRateVal;
-        updatedRows[index].amount = amount.toFixed(2);
-        updatedRows[index].purityWeight = purityWeight.toFixed(3);
-      } else if (updatedRows[index].amount) {
-        const amount = parseFloat(updatedRows[index].amount) || 0;
-        const purityWeight = amount / goldRateVal;
-        updatedRows[index].purityWeight = purityWeight.toFixed(3);
-      }
-    }
-
-    setRows(updatedRows);
-  };
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setDate(now.toLocaleDateString("en-IN"));
-      setTime(
-        now.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        })
-      );
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const handleAddItem = () => {
-    setOpenAddItem(true);
-  };
-
-  const handleCloseAddItem = () => {
-    setOpenAddItem(false);
-    setNewItem({
-      name: "",
-      no: "",
-      percentage: "",
-      weight: "",
-      pure: "",
-      touch: "",
-    });
-    setStockError(null);
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-
-    setNewItem((prev) => {
-      const updated = {
-        ...prev,
-        [name]: value,
-      };
-
-      if (name === "weight") {
-        const touch = parseFloat(updated.touch) || 0;
-        const weight = parseFloat(value) || 0;
-        if (touch && weight) {
-          updated.pure = (weight * (touch / 100)).toFixed(3);
-        } else {
-          updated.pure = "";
-        }
-      } else if (name === "name" || name === "no" || name === "touch") {
-        const coin = parseFloat(updated.name) || 0;
-        const no = parseFloat(updated.no) || 0;
-        const touch = parseFloat(updated.touch) || 0;
-
-        if (coin && no && touch) {
-          const weight = coin * no;
-          const pure = weight * (touch / 100);
-
-          updated.weight = weight.toFixed(3);
-          updated.pure = pure.toFixed(3);
-        }
-      }
-
-      return updated;
-    });
-  };
-  const calculateValues = () => {
-    const coin = parseFloat(newItem.name) || 0;
-    const no = parseFloat(newItem.no) || 0;
-    const touch = parseFloat(newItem.touch) || 0;
-
-    if (coin && no && touch) {
-      const weight = coin * no;
-      const pure = weight * (touch / 100);
-
-      setNewItem((prev) => ({
-        ...prev,
-        weight: weight.toFixed(3),
-        pure: pure.toFixed(3),
-      }));
-    }
-  };
-
-  useEffect(() => {
-    if (newItem.name && newItem.no && newItem.touch) {
-      calculateValues();
-    }
-  }, [newItem.name, newItem.no, newItem.touch]);
-
-  const handleSaveItem = () => {
-    if (!newItem.name || !newItem.no || !newItem.percentage) {
-      showSnackbar("Please fill all required fields", "error");
-      return;
-    }
-
-    if (stockError) {
-      showSnackbar(stockError, "error");
-      return;
-    }
-
-    setBillItems((prevItems) => [
-      ...prevItems,
-      {
-        id: Date.now().toString(),
-        coinValue: parseFloat(newItem.name),
-        quantity: parseInt(newItem.no),
-        percentage: newItem.percentage,
-        touch: newItem.touch,
-        weight: newItem.weight,
-        purity: newItem.pure,
-        goldRate: "",
-        amount: "",
-        displayName: `${newItem.name}g ${newItem.percentage}`,
-      },
-    ]);
-
-    handleCloseAddItem();
-  };
-
-  const calculateTotals = () => {
-    let totalWeight = 0;
-    let totalPurity = 0;
-    let totalAmount = 0;
-
-    billItems.forEach((item) => {
-      totalWeight += parseFloat(item.weight) || 0;
-      totalPurity += parseFloat(item.purity) || 0;
-      const itemGoldRate = parseFloat(item.goldRate);
-      if (!isNaN(itemGoldRate) && itemGoldRate > 0) {
-        totalAmount += itemGoldRate * (parseFloat(item.purity) || 0);
-      }
-    });
-
-    return { totalWeight, totalPurity, totalAmount };
-  };
-
-  const { totalWeight, totalPurity, totalAmount } = calculateTotals();
-
-  const calculateReceivedTotals = () => {
-    const receivedAmount = rows.reduce(
-      (sum, row) => sum + parseFloat(row.amount || 0),
-      0
-    );
-    const receivedPurity = rows.reduce(
-      (sum, row) => sum + parseFloat(row.purityWeight || 0),
-      0
-    );
-
-    return { receivedAmount, receivedPurity };
-  };
-
-  const { receivedAmount, receivedPurity } = calculateReceivedTotals();
-
-  const calculateBalances = () => {
-    const totalPurity = billItems.reduce(
-      (sum, item) => sum + parseFloat(item.purity || 0),
-      0
-    );
-
-    const totalReceivedPurity = rows.reduce(
-      (sum, row) => sum + parseFloat(row.purityWeight || 0),
-      0
-    );
-
-    const pureBalance = totalPurity - totalReceivedPurity;
-
-    const latestRowWithGoldRate = [...rows]
-      .reverse()
-      .find((row) => parseFloat(row.goldRate));
-    const latestGoldRate = latestRowWithGoldRate
-      ? parseFloat(latestRowWithGoldRate.goldRate)
-      : 0;
-
-    console.log("pure balance ", pureBalance, latestGoldRate);
-
-    const cashBalance = latestGoldRate * pureBalance;
-    const totalBalance = cashBalance + parseFloat(hallmarkCharges || 0);
-    const hallmarkBalance= hallmarkCharges||0;
-
-    return {
-      cashBalance: cashBalance.toFixed(2),
-      pureBalance: pureBalance.toFixed(3),
-      totalBalance: totalBalance.toFixed(2),
-      hallmarkBalance:hallmarkBalance
-    };
-  };
- 
-  
- 
-  const { cashBalance, hallmarkBalance, pureBalance, totalBalance } =
-    calculateBalances();
-
-  // const { cashBalance, pureBalance, totalBalance } = calculateBalances();
-
-  const handleBillItemChange = (index, field, value) => {
-    const updatedBillItems = [...billItems];
-    updatedBillItems[index][field] = value;
-
-    if (field === "goldRate") {
-      const goldRateVal = parseFloat(value);
-      const purityVal = parseFloat(updatedBillItems[index].purity);
-      setGoldRate(value);
-
-      if (!isNaN(goldRateVal) && goldRateVal > 0 && purityVal) {
-        updatedBillItems[index].amount = (goldRateVal * purityVal).toFixed(2);
-      } else {
-        updatedBillItems[index].amount = "";
-      }
-    }
-
-    setBillItems(updatedBillItems);
-  };
-
-  const handleUpdateBill = async () => {
-    if (!selectedBill || !selectedCustomer) {
-      showSnackbar("Invalid bill data", "error");
-      return;
-    }
-
-    try {
-      const updatedBill = {
-        ...selectedBill,
-        hallmarkBalance: parseFloat(hallmarkCharges || 0),
-        items: billItems.map((item) => ({
-          coinValue: parseFloat(item.coinValue),
-          quantity: parseInt(item.quantity),
-          percentage: parseInt(item.percentage),
-          touch: parseFloat(item.touch || 0),
-          weight: parseFloat(item.weight || 0),
-          purity: parseFloat(item.purity || 0),
-          goldRate: parseFloat(item.goldRate || 0),
-          amount: item.amount ? parseFloat(item.amount) : 0,
-        })),
-        receivedDetails: [
-          ...selectedBill.receivedDetails,
-          ...rows.slice(selectedBill.receivedDetails.length).map((row) => ({
-            date: row.date || new Date().toISOString().split("T")[0],
-            goldRate: parseFloat(row.goldRate || goldRate),
-            givenGold: parseFloat(row.givenGold || 0),
-            touch: parseFloat(row.touch || 0),
-            purityWeight: parseFloat(row.purityWeight || 0),
-            amount: parseFloat(row.amount || 0),
-          })),
-        ],
-      };
-
-      console.log("seee", selectedBill, updatedBill);
-
-      const response = await fetch(
-        `${BACKEND_SERVER_URL}/api/bills/${selectedBill.id}/receive`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updatedBill),
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to update bill");
-
-      const data = await response.json();
-      setSelectedBill(data);
-      showSnackbar("Bill updated successfully!", "success");
-      fetchBills();
-    } catch (error) {
-      console.error("Error:", error);
-      showSnackbar(error.message || "Failed to update bill", "error");
-    } finally {
-      setIsUpdating(false);
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("l", "mm", "a5");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+      pdf.save("bill.pdf");
     }
   };
 
@@ -640,7 +295,7 @@ const Billing = () => {
     }
   };
 
-  const handleSubmitBill = async () => {
+   const handleSubmitBill = async () => {
     if (!selectedCustomer || billItems.length === 0) {
       showSnackbar("Please fill all required fields", "error");
       return;
@@ -720,97 +375,89 @@ const Billing = () => {
     }
   };
 
-  const resetForm = () => {
-    setBillItems([]);
-    setRows([
-      {
-        date: new Date().toISOString().slice(0, 10),
-        goldRate: "",
-        givenGold: "",
-        touch: "",
-        purityWeight: "",
-        amount: "",
-      },
-    ]);
-    setSelectedCustomer(null);
-    setGoldRate("");
-    setHallmarkCharges(0);
-    setSelectedBill(null);
-    setViewMode(false);
-    setIsSubmitting(false);
-    setIsUpdating(false);
-    setDisplayHallmarkCharges(0);
+  const calculateTotals = () => {
+    let totalWeight = 0;
+    let totalPurity = 0;
+    let totalAmount = 0;
 
-    const newBillNo = latestBill
-      ? `BILL-${parseInt(latestBill.id) + 1}`
-      : "BILL-1";
-    setBillNo(newBillNo);
-  };
-
-  const handlePrint = async () => {
-    const printButton = document.querySelector(".add-circle-icon");
-    let printButtonParent = null;
-    let printButtonClone = null;
-
-    if (printButton) {
-      printButtonParent = printButton.parentNode;
-      printButtonClone = printButton.cloneNode(true);
-      printButtonParent.removeChild(printButton);
-    }
-
-    const input = billRef.current;
-    if (input) {
-      const canvas = await html2canvas(input, {
-        scale: window.devicePixelRatio || 2,
-        useCORS: true,
-        scrollY: -window.scrollY,
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-
-      const pdf = new jsPDF("l", "mm", "a5");
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgWidthInPx = canvas.width;
-      const imgHeightInPx = canvas.height;
-      const ratio = imgWidthInPx / imgHeightInPx;
-
-      let finalImgWidth = pageWidth;
-      let finalImgHeight = pageWidth / ratio;
-
-      if (finalImgHeight > pageHeight) {
-        finalImgHeight = pageHeight;
-        finalImgWidth = pageHeight * ratio;
+    billItems.forEach((item) => {
+      totalWeight += parseFloat(item.weight) || 0;
+      totalPurity += parseFloat(item.purity) || 0;
+      const itemGoldRate = parseFloat(item.goldRate);
+      if (!isNaN(itemGoldRate) && itemGoldRate > 0) {
+        totalAmount += itemGoldRate * (parseFloat(item.purity) || 0);
       }
+    });
 
-      pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+    return { totalWeight, totalPurity, totalAmount };
+  };
 
-      pdf.save("bill.pdf");
+  const { totalWeight, totalPurity, totalAmount } = calculateTotals();
+
+  const handleUpdateBill = async () => {
+    if (!selectedBill || !selectedCustomer) {
+      showSnackbar("Invalid bill data", "error");
+      return;
     }
 
-    if (printButtonClone && printButtonParent) {
-      printButtonParent.appendChild(printButtonClone);
+    try {
+      const updatedBill = {
+        ...selectedBill,
+        hallmarkBalance: parseFloat(hallmarkCharges || 0),
+        items: billItems.map((item) => ({
+          coinValue: parseFloat(item.coinValue),
+          quantity: parseInt(item.quantity),
+          percentage: parseInt(item.percentage),
+          touch: parseFloat(item.touch || 0),
+          weight: parseFloat(item.weight || 0),
+          purity: parseFloat(item.purity || 0),
+          goldRate: parseFloat(item.goldRate || 0),
+          amount: item.amount ? parseFloat(item.amount) : 0,
+        })),
+        receivedDetails: [
+          ...selectedBill.receivedDetails,
+          ...rows.slice(selectedBill.receivedDetails.length).map((row) => ({
+            date: row.date || new Date().toISOString().split("T")[0],
+            goldRate: parseFloat(row.goldRate || goldRate),
+            givenGold: parseFloat(row.givenGold || 0),
+            touch: parseFloat(row.touch || 0),
+            purityWeight: parseFloat(row.purityWeight || 0),
+            amount: parseFloat(row.amount || 0),
+          })),
+        ],
+      };
+
+      console.log("seee", selectedBill, updatedBill);
+
+      const response = await fetch(
+        `${BACKEND_SERVER_URL}/api/bills/${selectedBill.id}/receive`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedBill),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to update bill");
+
+      const data = await response.json();
+      setSelectedBill(data);
+      showSnackbar("Bill updated successfully!", "success");
+      fetchBills();
+    } catch (error) {
+      console.error("Error:", error);
+      showSnackbar(error.message || "Failed to update bill", "error");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
-  console.log("fetched", selectedBill);
-
-  useEffect(() => {
-    if (viewMode && selectedBill) {
-      setDisplayHallmarkCharges(selectedBill.hallmarkCharges || 0);
-    } else if (!selectedBill && !viewMode) {
-      setDisplayHallmarkCharges(0);
-      setHallmarkCharges(0);
-    }
-  }, [viewMode, selectedBill]);
 
   return (
     <>
       <Box className="sidebar">
         <Tooltip title="Add Bill Details" arrow placement="right">
-          <div className="sidebar-button" onClick={handleAddItem}>
+          <div className="sidebar-button" onClick={() => setOpenAddItem(true)}>
             <AddIcon />
             <span>Add</span>
           </div>
@@ -883,16 +530,16 @@ const Billing = () => {
 
         {viewMode && selectedBill && (
           <Tooltip title="Update Bill" arrow placement="right">
-            <div
+           <div
               className="sidebar-button"
               onClick={handleUpdateBill}
               style={{
-                opacity: !isUpdating ? 0.5 : 1,
-                pointerEvents: !isUpdating ? "none" : "auto",
+                opacity: isUpdating ? 1 : 0.5,
+                pointerEvents: isUpdating ? "auto" : "none",
               }}
             >
               <span>Update</span>
-            </div>
+            </div> 
           </Tooltip>
         )}
 
@@ -906,65 +553,15 @@ const Billing = () => {
           </div>
         </Tooltip>
       </Box>
-      <Modal
-        open={viewMode && !selectedBill}
-        onClose={() => setViewMode(false)}
-        aria-labelledby="view-bills-modal"
-      >
-        <Box
-          className="modal-container"
-          style={{ maxHeight: "80vh", overflowY: "auto" }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Select a Bill to View
-          </Typography>
-          <table className="table">
-            <thead>
-              <tr>
-                <th className="th">Bill No</th>
-                <th className="th">Customer</th>
-                <th className="th">Date</th>
-                {/* <th className="th">Total Amount</th> */}
-                <th className="th">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fetchedBills.map((bill) => (
-                <tr key={bill.id}>
-                  <td className="td">BILL-{bill.id}</td>
-                  <td className="td">
-                    {customers.find((c) => c.id === bill.customerId)?.name ||
-                      "Unknown"}
-                  </td>
-                  <td className="td">
-                    {new Date(bill.createdAt).toLocaleDateString()}
-                  </td>
-                  {/*   <td className="td">
-                    {(
-                      bill.items.reduce(
-                        (sum, item) => sum + item.purity * bill.goldRate,
-                        0
-                      ) + (bill.hallmarkCharges || 0)
-                    ).toFixed(2)}
-                  </td> */}
-                  <td className="td">
-                    <Button variant="outlined" onClick={() => viewBill(bill)}>
-                      View
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <Button
-            onClick={() => setViewMode(false)}
-            style={{ marginTop: "1rem" }}
-            variant="contained"
-          >
-            Close
-          </Button>
-        </Box>
-      </Modal>
+
+      {viewMode && !selectedBill && (
+        <ViewBill
+          fetchedBills={fetchedBills}
+          customers={customers}
+          viewBill={viewBill}
+          setViewMode={setViewMode}
+        />
+      )}
 
       {(!viewMode || selectedBill) && (
         <Box className="container" ref={billRef}>
@@ -1012,420 +609,37 @@ const Billing = () => {
             </Box>
           )}
 
-          <Box className="itemsSection">
-            <div className="bill">
-              <h3>Bill Details:</h3>
-            </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="th">Coin Name</th>
-                  <th className="th">No</th>
-                  <th className="th">%</th>
-                  <th className="th">Weight</th>
-                  <th className="th">Purity</th>
-                  <th className="th">Amount</th>
-                  <th className="th">Gold Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {billItems.map((item, index) => (
-                  <tr key={index}>
-                    <td className="td">
-                      {item.coinValue}g {item.percentage}
-                    </td>
-                    <td className="td">{item.quantity}</td>
-                    <td className="td">{item.touch}</td>
-                    <td className="td">{item.weight}</td>
-                    <td className="td">{item.purity}</td>
-                    <td className="td">{item.goldRate ? item.amount : ""}</td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={item.goldRate || ""}
-                        onChange={(e) =>
-                          handleBillItemChange(
-                            index,
-                            "goldRate",
-                            e.target.value
-                          )
-                        }
-                        type="number"
-                        disabled={viewMode && selectedBill}
-                        inputProps={{ min: 0 }}
-                      />
-                    </td>
-                  </tr>
-                ))}
+          <BillDetails
+            billItems={billItems}
+            setBillItems={setBillItems}
+            totalWeight={calculateTotals().totalWeight}
+            totalPurity={calculateTotals().totalPurity}
+            totalAmount={calculateTotals().totalAmount}
+            displayHallmarkCharges={displayHallmarkCharges}
+            setDisplayHallmarkCharges={setDisplayHallmarkCharges}
+            setHallmarkCharges={setHallmarkCharges}
+            viewMode={viewMode}
+            selectedBill={selectedBill}
+            openAddItem={openAddItem}
+            setOpenAddItem={setOpenAddItem}
+            stockData={stockData}
+            showSnackbar={showSnackbar}
+          />
 
-                <tr>
-                  <td className="td">
-                    <strong>Total</strong>
-                  </td>
-                  <td className="td">
-                    <strong>
-                      {billItems.reduce(
-                        (sum, item) => sum + parseInt(item.quantity),
-                        0
-                      )}
-                    </strong>
-                  </td>
-                  <td className="td"></td>
-                  <td className="td">
-                    <strong>{totalWeight.toFixed(3)}</strong>
-                  </td>
-                  <td className="td">
-                    <strong>{totalPurity.toFixed(3)}</strong>
-                  </td>
-                  <td className="td">
-                    <strong>{totalAmount.toFixed(2)}</strong>
-                  </td>
-                  <td className="td"></td>
-                </tr>
-
-                <tr>
-                  <td className="td" colSpan={5}>
-                    <strong>Hallmark or MC Charges</strong>
-                  </td>
-                  <td className="td">
-                    <TextField
-                      size="small"
-                      style={{ width: "120px" }}
-                      value={displayHallmarkCharges}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        setDisplayHallmarkCharges(value);
-                        setHallmarkCharges(value);
-                      }}
-                      type="number"
-                      disabled={viewMode && selectedBill}
-                    />
-                  </td>
-                  <td className="td"></td>
-                </tr>
-                <tr>
-                  <td className="td" colSpan={5}>
-                    <strong>Total Amount</strong>
-                  </td>
-                  <td className="td">
-                    <strong>
-                      {selectedBill
-                        ? (
-                            totalAmount +
-                            parseFloat(selectedBill?.hallmarkCharges || 0)
-                          ).toFixed(2)
-                        : (
-                            totalAmount + parseFloat(hallmarkCharges || 0)
-                          ).toFixed(2)}
-                    </strong>
-                  </td>
-                  <td className="td"></td>
-                </tr>
-              </tbody>
-            </table>
-          </Box>
-
-          <Box className="itemsSection">
-            <div className="add">
-              <h3>Received Details:</h3>
-              {(!viewMode || selectedBill) && (
-                <p style={{ marginLeft: "42.4rem" }}>
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      handleAddRow();
-                      setIsUpdating(true);
-                    }}
-                    className="add-circle-icon"
-                  >
-                    <AddCircleOutlineIcon />
-                  </IconButton>
-                </p>
-              )}
-            </div>
-
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="th">S.No</th>
-                  <th className="th">Date</th>
-                  <th className="th">Gold WT</th>
-                  <th className="th">Gold Rate</th>
-                  <th className="th">%</th>
-                  <th className="th">Purity WT</th>
-                  <th className="th">Amount</th>
-                  {(!viewMode || selectedBill) && (
-                    <th className="th">Action</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr key={index}>
-                    <td className="td">{index + 1}</td>
-                    <td className="td">
-                      <TextField
-                        style={{ right: "17px" }}
-                        size="small"
-                        type="date"
-                        value={row.date}
-                        onChange={(e) =>
-                          handleRowChange(index, "date", e.target.value)
-                        }
-                        disabled={
-                          viewMode &&
-                          index < selectedBill?.receivedDetails?.length
-                        }
-                      />
-                    </td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={row.givenGold}
-                        onChange={(e) =>
-                          handleRowChange(index, "givenGold", e.target.value)
-                        }
-                        type="number"
-                        disabled={
-                          viewMode &&
-                          index < selectedBill?.receivedDetails?.length
-                        }
-                      />
-                    </td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={row.goldRate}
-                        onChange={(e) =>
-                          handleRowChange(index, "goldRate", e.target.value)
-                        }
-                        type="number"
-                        disabled={
-                          viewMode &&
-                          index < selectedBill?.receivedDetails?.length
-                        }
-                      />
-                    </td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={row.touch}
-                        onChange={(e) =>
-                          handleRowChange(index, "touch", e.target.value)
-                        }
-                        type="number"
-                        disabled={
-                          viewMode &&
-                          index < selectedBill?.receivedDetails?.length
-                        }
-                      />
-                    </td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={Number(row.purityWeight).toFixed(3)}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </td>
-                    <td className="td">
-                      <TextField
-                        size="small"
-                        value={row.amount}
-                        onChange={(e) =>
-                          handleRowChange(index, "amount", e.target.value)
-                        }
-                        type="number"
-                        disabled={
-                          viewMode &&
-                          index < selectedBill?.receivedDetails?.length
-                        }
-                      />
-                    </td>
-                    {(!viewMode || selectedBill) && (
-                      <td className="td">
-                        {(!viewMode ||
-                          index >= selectedBill?.receivedDetails?.length) && (
-                          <IconButton onClick={() => handleDeleteRow(index)}>
-                            <MdDeleteForever />
-                          </IconButton>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex">
-              <div>
-                <b>Pure Balance: {pureBalance}</b>
-              </div>
-              <div>
-                <b>Hallmark Balance: {hallmarkBalance}</b>
-              </div>
-              <div>
-                <b>Total Balance: {totalBalance}</b>
-              </div>
-            </div>
-          </Box>
+          <ReceivedDetails
+            rows={rows}
+            setRows={setRows}
+            initialPureBalance={pureBalance}
+            initialTotalBalance={totalBalance}
+            initialHallmarkBalance={hallmarkBalance}
+            setPureBalance={setPureBalance}
+            setTotalBalance={setTotalBalance}
+            setHallmarkBalance={setHallmarkBalance}
+            isViewMode={viewMode && selectedBill}
+            setIsUpdating={setIsUpdating}
+          />
         </Box>
       )}
-
-      <Modal
-        open={openAddItem}
-        onClose={handleCloseAddItem}
-        aria-labelledby="add-item-modal"
-      >
-        <Box className="modal-container">
-          <Typography variant="h6" gutterBottom>
-            Add Bill Details
-          </Typography>
-          <Box component="form" className="modal-form">
-            <TextField
-              fullWidth
-              label="Coin Info (e.g. 8g 916)"
-              name="coinInfo"
-              value={newItem.coinInfo || ""}
-              onChange={(e) => {
-                const input = e.target.value;
-                setNewItem((prev) => ({ ...prev, coinInfo: input }));
-
-                const match = input.match(/(\d+(?:\.\d+)?)g\s*(916|999)/);
-                if (match) {
-                  const gram = parseFloat(match[1]);
-                  const purity = match[2];
-
-                  let autoPercentage = "";
-                  let autoTouch = "";
-                  if (purity === "916") {
-                    autoPercentage = "916";
-                    autoTouch = "92";
-                  } else if (purity === "999") {
-                    autoPercentage = "999";
-                    autoTouch = "99.9";
-                  }
-
-                  setNewItem((prev) => ({
-                    ...prev,
-                    name: gram.toString(),
-                    percentage: autoPercentage,
-                    touch: autoTouch,
-                    weight: "",
-                    pure: "",
-                  }));
-
-                  const matchingStock = stockData.find(
-                    (item) => item.coinType === purity && item.gram === gram
-                  );
-
-                  if (!matchingStock) {
-                    setStockError(`No available stock for ${gram}g ${purity}`);
-                    setAvailableStock(0);
-                  } else {
-                    setAvailableStock(matchingStock.quantity);
-                    setStockError(null);
-                  }
-                } else {
-                  setStockError("Invalid format. Use like '8g 916'");
-                  setNewItem((prev) => ({
-                    ...prev,
-                    name: "",
-                    percentage: "",
-                    touch: "",
-                  }));
-                  setAvailableStock(0);
-                }
-              }}
-              margin="normal"
-              required
-              disabled={viewMode && selectedBill}
-            />
-            {newItem.percentage && (
-              <Box>
-                {newItem.name ? (
-                  <>
-                    <Typography variant="body2">
-                      Available Stock: {availableStock}
-                    </Typography>
-                    {stockError && (
-                      <Alert severity="error" sx={{ mt: 1 }}>
-                        {stockError}
-                      </Alert>
-                    )}
-                  </>
-                ) : (
-                  <Typography variant="body2">
-                    Available coins for {newItem.percentage}:{" "}
-                    {stockData
-                      .filter((item) => item.coinType === newItem.percentage)
-                      .map((item) => item.gram)
-                      .join(", ")}
-                  </Typography>
-                )}
-              </Box>
-            )}
-
-            <TextField
-              fullWidth
-              label="No of Coins"
-              name="no"
-              value={newItem.no}
-              onChange={handleInputChange}
-              margin="normal"
-              type="number"
-              required
-              disabled={viewMode && selectedBill}
-            />
-
-            <TextField
-              fullWidth
-              label="Percentage"
-              name="touch"
-              value={newItem.touch || ""}
-              onChange={handleInputChange}
-              margin="normal"
-              type="number"
-              required
-              disabled={viewMode && selectedBill}
-            />
-
-            <TextField
-              fullWidth
-              label="Weight (Auto-calculated)"
-              name="weight"
-              value={newItem.weight}
-              onChange={handleInputChange}
-              margin="normal"
-              type="number"
-              inputProps={{ step: "0.001" }}
-            />
-
-            <TextField
-              fullWidth
-              label="Purity (Auto-calculated)"
-              name="pure"
-              value={newItem.pure}
-              onChange={handleInputChange}
-              margin="normal"
-              InputProps={{ readOnly: true }}
-            />
-
-            <Box className="modal-actions">
-              <Button onClick={handleCloseAddItem} className="cancel-button">
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSaveItem}
-                className="save-button"
-                disabled={!!stockError || (viewMode && selectedBill)}
-              >
-                Save
-              </Button>
-            </Box>
-          </Box>
-        </Box>
-      </Modal>
 
       <Snackbar
         open={snackbar.open}
@@ -1445,8 +659,3 @@ const Billing = () => {
 };
 
 export default Billing;
-
-
-
-
-
