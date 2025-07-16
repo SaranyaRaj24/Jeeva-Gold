@@ -1,6 +1,5 @@
 .container {
-  width:100%;
-  max-width: 1200px;
+  width:94%;
   margin: 5rem ;
   padding: 2.5rem;
   border: 1px solid #e0e0e0;
@@ -12,7 +11,6 @@
   bottom: 25rem;
 }
 
-
 .heading {
   text-align: center;
   margin-bottom: 2rem;
@@ -23,7 +21,6 @@
   position: relative;
   padding-bottom: 0.5rem;
 }
-
 .heading::after {
   content: '';
   position: absolute;
@@ -99,7 +96,8 @@
 }
 
 .itemsSection h3 {
-  color: #2c3e50;
+  /* color: #2c3e50; */
+  color: black;
   font-size: 1.3rem;
   font-weight: 600;
   margin-bottom: 1rem;
@@ -135,12 +133,15 @@
 }
 
 .td {
-  color: #495057;
-  font-size: 0.9rem;
+  /* color: #495057; */
+  color: black;
+  font-size:1rem;
+  /* font-weight: 100; */
 }
 
 tr:nth-child(even) {
   background-color: #f8f9fa;
+
 }
 
 tr:hover {
@@ -357,14 +358,14 @@ tr:hover {
 
 @media (max-width: 1200px) {
   .container {
-    width: 90%;
+    width:94%;
     padding: 1.5rem;
   }
 }
 
 @media (max-width: 768px) {
   .container {
-    width: 95%;
+    width:94%;
     padding: 1rem;
   }
   
@@ -390,7 +391,7 @@ tr:hover {
     width: 100%;
     padding: 0;
   }
-  /* Add to your CSS or use inline styles */
+
 @media print {
   .container {
     width: 100% !important;
@@ -405,6 +406,43 @@ tr:hover {
   
   .billInfo, .customerDetails {
     box-shadow: none;
-    background-color: transparent;
+    background-color:transparent;
   }
+}
+.flex {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  border-top: 1px solid #ccc;
+  padding-top: 1rem;
+}
+
+.flex div:first-child {
+  flex: 1;
+  text-align: left;
+}
+
+.flex div:nth-child(2) {
+  flex: 1;
+  text-align: right;
+}
+
+.flex div:last-child {
+  flex: 0 0 100%;
+  text-align: center;
+  margin-top: 1rem;
+  border-top: 1px solid #ccc;
+  padding-top: 1rem;
+}
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+input[readonly],
+input[disabled] {
+  color: #000 !important;
+  opacity: 2 !important;
+  -webkit-text-fill-color: #000 !important;
 }

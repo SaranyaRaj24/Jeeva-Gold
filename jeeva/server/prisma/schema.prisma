@@ -15,56 +15,56 @@ model User {
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  name      String
-  phone     String?
-  address   String?
-  createdAt DateTime @default(now())
-  bill      Bill[]
-  transactions Transaction[] 
+  id           Int           @id @default(autoincrement())
+  name         String
+  phone        String?
+  address      String?
+  createdAt    DateTime      @default(now())
+  bill         Bill[]
+  transactions Transaction[]
 }
 
 model MasterItem {
   id        Int      @id @default(autoincrement())
   itemName  String
   createdAt DateTime @default(now())
-  items     Item[]   
+  items     Item[]
 }
 
 model CoinStock {
-  id          Int       @id @default(autoincrement())
-  coinType    String    
-  gram        Float   
-  quantity    Int       
-  touch       Float
-  totalWeight Float     
-  purity      Float
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  stockLogs   StockLog[] 
-}
-model StockLog {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   coinType    String
   gram        Float
-  quantity    Int        
-  changeType  String    
-  reason      String?    
-  createdAt   DateTime   @default(now())
+  quantity    Int
+  touch       Float
+  totalWeight Float
+  purity      Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  coinStock   CoinStock  @relation(fields: [coinStockId], references: [id])
+  stockLogs StockLog[]
+}
+
+model StockLog {
+  id         Int      @id @default(autoincrement())
+  coinType   String
+  gram       Float
+  quantity   Int
+  changeType String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  coinStock   CoinStock @relation(fields: [coinStockId], references: [id])
   coinStockId Int
 }
 
-
 model Goldsmith {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   name      String
   phone     String?
   address   String?
-  createdAt DateTime @default(now())
-  jobCards  JobCard[]  
+  createdAt DateTime  @default(now())
+  jobCards  JobCard[]
 }
 
 model JobCard {
@@ -76,14 +76,14 @@ model JobCard {
   items       Item[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-} 
+}
 
 model Item {
-  id                  Int               @id @default(autoincrement())
+  id                  Int                @id @default(autoincrement())
   masterItemId        Int
-  masterItem          MasterItem        @relation(fields: [masterItemId], references: [id])
+  masterItem          MasterItem         @relation(fields: [masterItemId], references: [id])
   jobCardId           Int
-  jobCard             JobCard           @relation(fields: [jobCardId], references: [id])
+  jobCard             JobCard            @relation(fields: [jobCardId], references: [id])
   originalGivenWeight Float
   givenWeight         Float
   touch               Float
@@ -93,90 +93,97 @@ model Item {
   purity              Float?
   additionalWeights   AdditionalWeight[]
 }
+
 model AdditionalWeight {
-  id     Int    @id @default(autoincrement())
-  name   String
-  weight Float
-  itemId Int
+  id        Int    @id @default(autoincrement())
+  name      String
+  weight    Float
+  itemId    Int
   operators String
-  item   Item   @relation(fields: [itemId], references: [id])
+  item      Item   @relation(fields: [itemId], references: [id])
 }
 
-
 model Bill {
-  id              Int         @id @default(autoincrement())
-  billNo          String      @unique
-  customer        Customer    @relation(fields: [customerId], references: [id])
+  id              Int              @id @default(autoincrement())
+  billNo          String           @unique
+  customer        Customer         @relation(fields: [customerId], references: [id])
   customerId      Int
   goldRate        Float
-  hallmarkCharges Float       @default(0)
+  hallmarkCharges Float            @default(0)
+  hallmarkBalance Float            @default(0)
   totalWeight     Float
   totalPurity     Float
   totalAmount     Float
-  date            DateTime    @default(now())
+  date            DateTime         @default(now())
   items           BillItem[]
   receivedDetails ReceivedDetail[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model BillItem {
-  id          Int     @id @default(autoincrement())
-  bill        Bill    @relation(fields: [billId], references: [id])
-  billId      Int
-  coinValue   Float   
-  quantity    Int
-  percentage  Int     
-  touch       Float?
-  weight      Float   
-  purity      Float  
-  amount      Float   
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  bill       Bill     @relation(fields: [billId], references: [id],  onDelete: Cascade)
+  billId     Int
+  coinValue  Float
+  quantity   Int
+  percentage Int
+  touch      Float?
+  goldRate   Float?
+  weight     Float
+  purity     Float
+  amount     Float
+  createdAt  DateTime @default(now())
 }
 
 model ReceivedDetail {
-  id           Int     @id @default(autoincrement())
-  bill         Bill    @relation(fields: [billId], references: [id])
+  id           Int      @id @default(autoincrement())
+  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
   billId       Int
   date         DateTime
   goldRate     Float
   givenGold    Float
   touch        Float
-  purityWeight Float   
-  amount       Float   
-  hallmark     Float   @default(0)
+  purityWeight Float
+  amount       Float
+  paidAmount   Float?
+  hallmark     Float    @default(0)
   createdAt    DateTime @default(now())
 }
+
 model JewelStock {
-  id           Int      @id @default(autoincrement())
-  jewelName    String
-  weight       Float
-  stoneWeight  Float
-  finalWeight  Float
-  touch        Float
-  purityValue  Float
-  createdAt    DateTime @default(now())
-}
-model Transaction {
   id          Int      @id @default(autoincrement())
-  date        DateTime
-  type        String   
-  value       Float    
-  goldRate    Float? 
-  purity      Float    
-  touch       Float?   
-  customer    Customer @relation(fields: [customerId], references: [id])
-  customerId  Int
+  jewelName   String
+  weight      Float
+  stoneWeight Float
+  finalWeight Float
+  touch       Float
+  purityValue Float
   createdAt   DateTime @default(now())
 }
+
+model Transaction {
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  type       String
+  value      Float
+  goldRate   Float?
+  purity     Float
+  touch      Float?
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId Int
+  createdAt  DateTime @default(now())
+}
+
 model Entry {
-  id          Int     @id @default(autoincrement())
-  date        DateTime
-  type        String
-  cashAmount  Float?
-  goldValue   Float?
-  touch       Float?
-  purity      Float?
-  goldRate    Float?  
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  type       String
+  cashAmount Float?
+  goldValue  Float?
+  touch      Float?
+  purity     Float?
+  goldRate   Float?
+  remarks    String?
+  createdAt  DateTime @default(now())
 }

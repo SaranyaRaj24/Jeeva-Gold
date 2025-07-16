@@ -7,6 +7,7 @@ router.get("/", stockController.getAllStocks);
 router.put("/:id", stockController.updateStock);
 router.delete("/:id", stockController.deleteStock);
 router.post("/reduce", stockController.reduceStock);
+router.post("/add", stockController.incrementStock);
 router.get("/logs", stockController.getAllLogs);
 
 module.exports = router;

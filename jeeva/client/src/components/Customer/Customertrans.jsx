@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { BACKEND_SERVER_URL } from "../../Config/Config";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { FaEdit, FaTrash } from "react-icons/fa";
 
 const Customertrans = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +19,7 @@ const Customertrans = () => {
   const [showPopup, setShowPopup] = useState(false);
   const [error, setError] = useState("");
   const [goldRate, setGoldRate] = useState("");
+  const [editTransactionId, setEditTransactionId] = useState(null);
 
   const [newTransaction, setNewTransaction] = useState({
     date: "",
@@ -28,6 +30,11 @@ const Customertrans = () => {
     touch: "",
     purity: "",
   });
+
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setNewTransaction((prev) => ({ ...prev, date: today }));
+  }, []);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -78,6 +85,21 @@ const Customertrans = () => {
     setNewTransaction(updatedTransaction);
   };
 
+  const resetForm = () => {
+    setNewTransaction({
+      date: new Date().toISOString().split("T")[0],
+      value: "",
+      type: "Select",
+      cashValue: "",
+      goldValue: "",
+      touch: "",
+      purity: "",
+    });
+    setError("");
+    setGoldRate("");
+    setEditTransactionId(null);
+  };
+
   const addTransaction = async (e) => {
     e.preventDefault();
     setError("");
@@ -107,33 +129,62 @@ const Customertrans = () => {
             : null,
       };
 
-      const response = await axios.post(
-        `${BACKEND_SERVER_URL}/api/transactions`,
-        transactionData
-      );
+      if (editTransactionId) {
+        const res = await axios.put(
+          `${BACKEND_SERVER_URL}/api/transactions/update/${editTransactionId}`,
+          transactionData
+        );
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.id === editTransactionId ? res.data.transaction : t
+          )
+        );
+        toast.success("Transaction updated successfully!");
+      } else {
+        const response = await axios.post(
+          `${BACKEND_SERVER_URL}/api/transactions`,
+          transactionData
+        );
+        setTransactions([...transactions, response.data]);
+        toast.success("Transaction added successfully!");
+      }
 
-      setTransactions([...transactions, response.data]);
       resetForm();
       setShowPopup(false);
-      toast.success("Transaction added successfully!");
     } catch (error) {
-      console.error("Error adding transaction:", error);
-      toast.error(error.message || "Error adding transaction");
+      console.error("Error adding/updating transaction:", error);
+      toast.error(error.message || "Error saving transaction");
     }
   };
 
-  const resetForm = () => {
+  const handleEdit = (transaction) => {
     setNewTransaction({
-      date: "",
-      value: "",
-      type: "Select",
-      cashValue: "",
-      goldValue: "",
-      touch: "",
-      purity: "",
+      date: transaction.date.split("T")[0],
+      type: transaction.type,
+      cashValue: transaction.type === "Cash" ? transaction.value : "",
+      goldValue: transaction.type === "Gold" ? transaction.value : "",
+      touch: transaction.touch || "",
+      purity: transaction.purity || "",
+      value: transaction.value,
     });
-    setError("");
-    setGoldRate("");
+    setGoldRate(transaction.goldRate || "");
+    setEditTransactionId(transaction.id);
+    setShowPopup(true);
+  };
+
+  const handleDelete = async (id) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this transaction?"
+    );
+    if (!confirmDelete) return;
+    try {
+      await axios.delete(`${BACKEND_SERVER_URL}/api/transactions/delete/${id}`);
+      setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+      toast.success("Transaction deleted successfully");
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast.error("Failed to delete transaction");
+    }
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
@@ -198,7 +249,9 @@ const Customertrans = () => {
               ×
             </span>
 
-            <h3>Add Transaction</h3>
+            <h3>
+              {editTransactionId ? "Edit Transaction" : "Add Transaction"}
+            </h3>
             <form onSubmit={addTransaction}>
               <label>
                 Date:
@@ -339,6 +392,7 @@ const Customertrans = () => {
             <th>Gold Rate</th>
             <th>Purity (grams)</th>
             <th>Touch</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -359,6 +413,20 @@ const Customertrans = () => {
               <td>{transaction.purity.toFixed(3)}</td>
               <td>
                 {transaction.type === "Gold" ? `${transaction.touch}%` : "-"}
+              </td>
+              <td style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  onClick={() => handleEdit(transaction)}
+                  className="edit-btn"
+                >
+                  <FaEdit />
+                </button>
+                <button
+                  onClick={() => handleDelete(transaction.id)}
+                  className="delete-btn"
+                >
+                  <FaTrash />
+                </button>
               </td>
             </tr>
           ))}

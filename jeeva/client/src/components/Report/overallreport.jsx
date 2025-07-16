@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import "./overallreport.css";
 import { BACKEND_SERVER_URL } from "../../Config/Config";
@@ -42,46 +41,27 @@ const OverallReport = () => {
           entriesRes.json(),
         ]);
 
-      const totalCashGoldEntriesPurity = entriesData.reduce(
+      const manualEntriesPurity = entriesData.reduce(
         (sum, entry) => sum + parseFloat(entry.purity || 0),
         0
       );
 
-      const customerBalances = customers.map((customer) => {
-        const customerBills = bills.filter(
-          (bill) => bill.customerId === customer.id
-        );
-
-        const totalBillAmount = customerBills.reduce((sum, bill) => {
-          const billAmount =
-            bill.items.reduce(
-              (billSum, item) => billSum + item.purity * bill.goldRate,
-              0
-            ) + (bill.hallmarkCharges || 0);
-          return sum + billAmount;
-        }, 0);
-
-        const totalReceived = customerBills.reduce((sum, bill) => {
-          return (
-            sum +
-            bill.receivedDetails.reduce(
-              (receivedSum, detail) => receivedSum + detail.amount,
-              0
-            )
-          );
-        }, 0);
-
-        return {
-          customerId: customer.id,
-          customerName: customer.name,
-          balance: totalBillAmount - totalReceived,
-        };
+      let receivedEntriesPurity = 0;
+      bills.forEach((bill) => {
+        if (bill.receivedDetails && Array.isArray(bill.receivedDetails)) {
+          bill.receivedDetails.forEach((detail) => {
+            const purity = parseFloat(detail.purityWeight || 0);
+            if (detail.paidAmount > 0) {
+              receivedEntriesPurity -= purity;
+            } else {
+              receivedEntriesPurity += purity;
+            }
+          });
+        }
       });
 
-      const customerBalanceTotal = customerBalances.reduce(
-        (sum, customer) => sum + customer.balance,
-        0
-      );
+      const totalCashGoldEntriesPurity =
+        manualEntriesPurity + receivedEntriesPurity;
 
       const totalJewelPurity = jewelData.reduce(
         (sum, item) => sum + parseFloat(item.purityValue || 0),
@@ -118,63 +98,86 @@ const OverallReport = () => {
         0
       );
 
+      const calculateTotalBalances = (bills) => {
+        let totalCustomerBalance = 0;
+
+        bills.forEach((bill) => {
+          const totalPurity = parseFloat(bill.totalPurity || 0);
+
+          let receivedPurity = 0;
+          if (bill.receivedDetails && Array.isArray(bill.receivedDetails)) {
+            bill.receivedDetails.forEach((detail) => {
+              const purity = parseFloat(detail.purityWeight || 0);
+              if (detail.paidAmount > 0) {
+                receivedPurity -= purity;
+              } else {
+                receivedPurity += purity;
+              }
+            });
+          }
+
+          const balance = totalPurity - receivedPurity;
+
+          if (balance.toFixed(3) > 0) {
+            totalCustomerBalance += balance;
+            console.log("balances", balance, totalCustomerBalance, bill);
+          }
+        });
+
+        return {
+          totalCustomerBalance,
+        };
+      };
+
+      const { totalCustomerBalance } = calculateTotalBalances(bills);
+
       const overallValue =
-        customerBalanceTotal +
+        (totalCustomerBalance +
         totalCashGoldEntriesPurity +
         totalCoinPurity +
-        totalJewelPurity -
+        totalJewelPurity )-
         advancesGold;
 
       setReportData([
         {
-          label: "Customer Balance Total",
-          value: `₹${customerBalanceTotal.toLocaleString("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`,
-          tooltip: "Sum of all customer balances (bills minus payments)",
+          label: "Customer Balance",
+          value: `${totalCustomerBalance.toFixed(3)}g`,
+          tooltip:
+            "Total sum of 'pureBalance' (i.e. totalPurity) across all saved bills",
         },
         {
           label: "Cash/Gold (Entries Purity)",
           value: `${totalCashGoldEntriesPurity.toFixed(3)}g`,
           tooltip:
-            "Total gold purity from all manual Cash/Gold entries in the system",
+            `Total gold purity from all manual Cash/Gold entries in the system (Sum of manual entries ${manualEntriesPurity.toFixed(3)}g and received bill entries ${receivedEntriesPurity.toFixed(3)}g)`,
         },
         {
           label: "Coin Stock",
-          value: `${coinData.length} Coins (${totalCoinPurity.toFixed(
-            3
-          )}g Purity)`,
+          value: ` ${totalCoinPurity.toFixed(3)}g Purity (${
+            coinData.length
+          } Coins)`,
           tooltip: "Current coin inventory with total purity",
         },
         {
           label: "Jewel Stock",
-          value: `${jewelData.length} Items (${totalJewelPurity.toFixed(
-            3
-          )}g Purity)`,
+          value: ` ${totalJewelPurity.toFixed(3)}g Purity (${
+            jewelData.length
+          } Items)`,
           tooltip: "Current jewel inventory with total purity",
         },
         {
           label: "Advances in Gold (Purity)",
           value: `${advancesGold.toFixed(3)}g`,
           tooltip:
-            "Total gold purity equivalent from all customer advance transactions (both cash and gold advances)",
-        },
-        {
-          label: "Active Customers",
-          value: `${customers.length} (${
-            customerBalances.filter((c) => c.balance > 0).length
-          } with balance)`,
-          tooltip: "Total customers and those with outstanding balances",
+            "Total gold purity equivalent from all customer advance transactions",
         },
         {
           label: "Overall Value",
-          value: `₹${overallValue.toLocaleString("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`,
-          tooltip:
-            "Customer Balance + Cash/Gold + Coin + Jewel - Advances in Gold",
+          value: `${overallValue.toLocaleString("en-IN", {
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3,
+          })} g`,
+          tooltip: "Pure Balance + Cash/Gold + Coin + Jewel - Advances in Gold",
         },
       ]);
     } catch (error) {
@@ -214,4 +217,3 @@ const OverallReport = () => {
 };
 
 export default OverallReport;
-

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -17,6 +16,7 @@ import {
   IconButton,
   Modal,
   Alert,
+  TableFooter,
 } from "@mui/material";
 import { BACKEND_SERVER_URL } from "../../Config/Config";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -32,104 +32,157 @@ const CustomerReport = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedBill, setSelectedBill] = useState(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [openingBalance, setOpeningBalance] = useState(0);
-  const [closingBalance, setClosingBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
 
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
-    setStartDate();
-    setEndDate();
+    setStartDate(today);
+    setEndDate(today);
   }, []);
 
   useEffect(() => {
-    const fetchCustomers = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch(`${BACKEND_SERVER_URL}/api/customers`);
-        const data = await response.json();
-        setCustomers(data);
+        const [customersRes, billsRes, transactionsRes] = await Promise.all([
+          fetch(`${BACKEND_SERVER_URL}/api/customers`),
+          fetch(`${BACKEND_SERVER_URL}/api/bills`),
+          fetch(`${BACKEND_SERVER_URL}/api/transactions/all`),
+        ]);
+
+        const customersData = await customersRes.json();
+        const billsData = await billsRes.json();
+        const transactionsData = await transactionsRes.json();
+
+        setCustomers(customersData);
+        setBills(billsData);
+        setFilteredBills(billsData);
+        setTransactions(transactionsData || []); // Ensure transactions is always an array
       } catch (error) {
-        console.error("Error fetching customers:", error);
+        console.error("Error fetching data:", error);
       }
     };
 
-    const fetchBills = async () => {
-      try {
-        const response = await fetch(`${BACKEND_SERVER_URL}/api/bills`);
-        const data = await response.json();
-        setBills(data);
-        setFilteredBills(data); 
-      } catch (error) {
-        console.error("Error fetching bills:", error);
-      }
-    };
-
-    fetchCustomers();
-    fetchBills();
-  }, []); 
+    fetchData();
+  }, []);
 
   useEffect(() => {
     let result = bills;
 
     if (selectedCustomer) {
       result = result.filter((bill) => bill.customerId === selectedCustomer.id);
-      calculateBalances(selectedCustomer.id);
-    } else {
-    
-      setOpeningBalance(0);
-      setClosingBalance(0);
     }
 
     if (startDate) {
       result = result.filter(
-        (bill) => new Date(bill.createdAt) >= new Date(startDate)
+        (bill) => new Date(bill.date) >= new Date(startDate)
       );
     }
 
     if (endDate) {
       result = result.filter(
-        (bill) => new Date(bill.createdAt) <= new Date(endDate + "T23:59:59")
+        (bill) => new Date(bill.date) <= new Date(endDate + "T23:59:59")
       );
     }
 
     setFilteredBills(result);
     setPage(0);
-  }, [selectedCustomer, startDate, endDate, bills]); 
+  }, [selectedCustomer, startDate, endDate, bills]);
 
-  const calculateBalances = (customerId) => {
-    const openingBills = bills.filter(
-      (bill) =>
-        bill.customerId === customerId &&
-        (startDate ? new Date(bill.createdAt) < new Date(startDate) : false)
+  const calculateBillBalance = (bill, customerId) => {
+    if (!bill?.receivedDetails || !Array.isArray(bill.receivedDetails)) {
+      return {
+        balance: bill?.totalPurity || 0,
+        advanceUsed: 0,
+        remainingAdvance: 0,
+      };
+    }
+
+    const customerAdvances = transactions
+      .filter(
+        (txn) =>
+          txn.customerId === customerId &&
+          new Date(txn.date) <= new Date(bill.date)
+      )
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const previousBills = bills
+      .filter(
+        (b) =>
+          b.customerId === customerId && new Date(b.date) < new Date(bill.date)
+      )
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let remainingAdvance = customerAdvances.reduce(
+      (sum, txn) => sum + (txn.purity || 0),
+      0
     );
 
-    const opening = openingBills.reduce((total, bill) => {
-      const billTotal = bill.items.reduce(
-        (sum, item) => sum + item.purity * bill.goldRate,
-        0
-      );
-      return total + billTotal + (bill.hallmarkCharges || 0);
+    previousBills.forEach((prevBill) => {
+      const prevBalance = calculateBillBalance(prevBill, customerId);
+      remainingAdvance -= prevBalance.advanceUsed;
+    });
+
+    let receivedPurity = bill.receivedDetails.reduce((sum, detail) => {
+      if (detail.paidAmount) {
+        return sum - (detail.purityWeight || 0);
+      }
+      return sum + (detail.purityWeight || 0);
     }, 0);
 
-    setOpeningBalance(opening);
-
-    const filtered = bills.filter(
-      (bill) =>
-        bill.customerId === customerId &&
-        (startDate ? new Date(bill.createdAt) >= new Date(startDate) : true) &&
-        (endDate
-          ? new Date(bill.createdAt) <= new Date(endDate + "T23:59:59")
-          : true)
-    );
-
-    const closing = filtered.reduce((total, bill) => {
-      const billTotal = bill.items.reduce(
-        (sum, item) => sum + item.purity * bill.goldRate,
-        0
+    let advanceUsed = 0;
+    if (remainingAdvance > 0) {
+      advanceUsed = Math.min(
+        remainingAdvance,
+        bill.totalPurity - receivedPurity
       );
-      return total + billTotal + (bill.hallmarkCharges || 0);
-    }, opening);
+      receivedPurity += advanceUsed;
+    }
 
-    setClosingBalance(closing);
+    const balance = (bill.totalPurity || 0) - receivedPurity;
+    remainingAdvance -= advanceUsed;
+
+    return {
+      balance,
+      advanceUsed,
+      remainingAdvance,
+    };
+  };
+
+  const getBillDescription = (bill) => {
+    if (!bill.items || bill.items.length === 0) return "-";
+
+    const item = bill.items[0];
+    return (
+      <>
+        <div>{`${item.coinValue}g ${item.percentage} (touch ${item.touch}) x ${item.quantity}`}</div>
+        <div>Total Purity: {bill.totalPurity.toFixed(3)}g</div>
+      </>
+    );
+  };
+
+  const getReceivedDetailsSummary = (bill) => {
+    if (!bill.receivedDetails || !Array.isArray(bill.receivedDetails)) {
+      return "No payments received";
+    }
+
+    const balanceInfo = calculateBillBalance(bill, bill.customerId);
+    const totalReceived = bill.receivedDetails.reduce((sum, detail) => {
+      return sum + Math.abs(detail.purityWeight || 0);
+    }, 0);
+
+    return (
+      <>
+        <div>Received: {totalReceived.toFixed(3)}g</div>
+        {balanceInfo.advanceUsed.toFixed(3) > 0 && (
+          <div>Advance applied: {balanceInfo.advanceUsed.toFixed(3)}g</div>
+        )}
+        {balanceInfo.remainingAdvance > 0 && (
+          <div>
+            Advance available: {balanceInfo.remainingAdvance.toFixed(3)}g
+          </div>
+        )}
+      </>
+    );
   };
 
   const handleChangePage = (event, newPage) => {
@@ -141,42 +194,6 @@ const CustomerReport = () => {
     setPage(0);
   };
 
-  const calculateTotal = (bills) => {
-    return bills.reduce((total, bill) => {
-      const billTotal = bill.items.reduce(
-        (sum, item) => sum + item.purity * bill.goldRate,
-        0
-      );
-      return total + billTotal + (bill.hallmarkCharges || 0);
-    }, 0);
-  };
-
-  const calculateWeight = (bills) => {
-    return bills.reduce(
-      (total, bill) =>
-        total + bill.items.reduce((sum, item) => sum + item.weight, 0),
-      0
-    );
-  };
-
-  const calculatePurity = (bills) => {
-    return bills.reduce(
-      (total, bill) =>
-        total + bill.items.reduce((sum, item) => sum + item.purity, 0),
-      0
-    );
-  };
-
-  const handleReset = () => {
-    const today = new Date().toISOString().split("T")[0];
-    setSelectedCustomer(null);
-    setStartDate(today);
-    setEndDate(today);
-    setFilteredBills(bills); 
-    setOpeningBalance(0);
-    setClosingBalance(0);
-  };
-
   const handleViewBill = (bill) => {
     setSelectedBill(bill);
     setViewModalOpen(true);
@@ -185,6 +202,40 @@ const CustomerReport = () => {
   const handleCloseModal = () => {
     setViewModalOpen(false);
     setSelectedBill(null);
+  };
+
+  const calculateTotalReceived = () => {
+    return filteredBills.reduce((total, bill) => {
+      if (!bill.receivedDetails) return total;
+
+      const billReceived = bill.receivedDetails.reduce((sum, detail) => {
+        return sum + Math.abs(detail.purityWeight || 0);
+      }, 0);
+
+      console.log("total", total, billReceived);
+
+      return total + billReceived;
+    }, 0);
+  };
+
+  const calculateTotalBalance = () => {
+    return filteredBills.reduce((total, bill) => {
+      return total + calculateBillBalance(bill);
+    }, 0);
+  };
+
+  const calculateTotalPurity = () => {
+    return filteredBills.reduce(
+      (sum, bill) => sum + (bill.totalPurity || 0),
+      0
+    );
+  };
+
+  const calculateTotalAdvanceAvailable = () => {
+    if (!transactions || !Array.isArray(transactions)) return 0;
+    return transactions.reduce((sum, txn) => {
+      return sum + (txn.purity || 0);
+    }, 0);
   };
 
   return (
@@ -224,52 +275,6 @@ const CustomerReport = () => {
           InputLabelProps={{ shrink: true }}
           sx={{ minWidth: 200 }}
         />
-
-        <Button variant="outlined" onClick={handleReset}>
-          Reset
-        </Button>
-      </Box>
-
-      {selectedCustomer && (
-        <Box
-          sx={{
-            display: "flex",
-            gap: 4,
-            mb: 2,
-            flexWrap: "wrap",
-            fontWeight: "bold",
-          }}
-        >
-          <Typography variant="body1">
-            Opening Balance: ₹{openingBalance.toFixed(2)}
-          </Typography>
-          <Typography variant="body1">
-            Closing Balance: ₹{closingBalance.toFixed(2)}
-          </Typography>
-        </Box>
-      )}
-
-      <Box
-        sx={{
-          display: "flex",
-          gap: 4,
-          mb: 2,
-          flexWrap: "wrap",
-          fontWeight: "bold",
-        }}
-      >
-        <Typography variant="body1">
-          Total Sales: ₹{calculateTotal(filteredBills).toFixed(2)}
-        </Typography>
-        <Typography variant="body1">
-          Total Weight: {calculateWeight(filteredBills).toFixed(3)} g
-        </Typography>
-        <Typography variant="body1">
-          Total Purity: {calculatePurity(filteredBills).toFixed(3)} g
-        </Typography>
-        <Typography variant="body1">
-          Number of Bills: {filteredBills.length}
-        </Typography>
       </Box>
 
       <TableContainer component={Paper}>
@@ -278,12 +283,10 @@ const CustomerReport = () => {
             <TableRow>
               <TableCell>Bill No</TableCell>
               <TableCell>Date</TableCell>
-              <TableCell>Customer Name</TableCell>
-              <TableCell>Gold Rate</TableCell>
-              <TableCell>Total Weight</TableCell>
-              <TableCell>Total Purity</TableCell>
-              <TableCell>Hallmark Charges</TableCell>
-              <TableCell>Total Amount</TableCell>
+              <TableCell>Description</TableCell>
+              <TableCell>Received Details</TableCell>
+              <TableCell>Customer Balance</TableCell>
+              <TableCell>Owner Balance</TableCell>
               <TableCell>Action</TableCell>
             </TableRow>
           </TableHead>
@@ -291,39 +294,22 @@ const CustomerReport = () => {
             {filteredBills
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
               .map((bill) => {
-                const totalWeight = bill.items.reduce(
-                  (sum, item) => sum + item.weight,
-                  0
-                );
-                const totalPurity = bill.items.reduce(
-                  (sum, item) => sum + item.purity,
-                  0
-                );
-                const totalAmount = bill.items.reduce(
-                  (sum, item) => sum + item.purity * bill.goldRate,
-                  0
-                );
-
-             
-                const customer = customers.find(
-                  (c) => c.id === bill.customerId
-                );
-                const customerName = customer ? customer.name : "Unknown";
+                const balanceInfo = calculateBillBalance(bill, bill.customerId);
+                const customerBalance =
+                  balanceInfo.balance > 0 ? balanceInfo.balance : 0;
+                const ownerBalance =
+                  balanceInfo.balance < 0 ? balanceInfo.balance : 0;
 
                 return (
                   <TableRow key={bill.id}>
-                    <TableCell>BILL-{bill.id}</TableCell>
+                    <TableCell>{bill.billNo}</TableCell>
                     <TableCell>
-                      {new Date(bill.createdAt).toLocaleDateString()}
+                      {new Date(bill.date).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>{customerName}</TableCell>{" "}
-                    <TableCell>{bill.goldRate}</TableCell>
-                    <TableCell>{totalWeight.toFixed(3)}</TableCell>
-                    <TableCell>{totalPurity.toFixed(3)}</TableCell>
-                    <TableCell>{bill.hallmarkCharges || 0}</TableCell>
-                    <TableCell>
-                      {(totalAmount + (bill.hallmarkCharges || 0)).toFixed(2)}
-                    </TableCell>
+                    <TableCell>{getBillDescription(bill)}</TableCell>
+                    <TableCell>{getReceivedDetailsSummary(bill)}</TableCell>
+                    <TableCell>{customerBalance.toFixed(3)}</TableCell>
+                    <TableCell>{ownerBalance.toFixed(3)}</TableCell>
                     <TableCell>
                       <IconButton onClick={() => handleViewBill(bill)}>
                         <VisibilityIcon color="primary" />
@@ -333,6 +319,75 @@ const CustomerReport = () => {
                 );
               })}
           </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell colSpan={2} align="right">
+                <strong>Totals:</strong>
+              </TableCell>
+              <TableCell>
+                <strong>{calculateTotalPurity().toFixed(3)}g</strong>
+              </TableCell>
+              <TableCell>
+                <div>
+                  <strong>
+                    Received: {calculateTotalReceived().toFixed(3)}g
+                  </strong>
+                </div>
+                <div>
+                  <strong>
+                    Advance Available:{" "}
+                    {calculateTotalAdvanceAvailable().toFixed(3)}g
+                  </strong>
+                </div>
+                <div
+                  style={{
+                    borderTop: "1px solid #ccc",
+                    marginTop: 4,
+                    paddingTop: 4,
+                  }}
+                >
+                  <strong>
+                    Total:{" "}
+                    {(
+                      calculateTotalReceived() +
+                      calculateTotalAdvanceAvailable()
+                    ).toFixed(3)}
+                    g
+                  </strong>
+                </div>
+              </TableCell>
+
+              <TableCell>
+                <strong>
+                  {filteredBills
+                    .reduce((sum, bill) => {
+                      const { balance } = calculateBillBalance(
+                        bill,
+                        bill.customerId
+                      );
+                      return sum + (balance > 0 ? balance : 0);
+                    }, 0)
+                    .toFixed(3)}
+                  g
+                </strong>
+              </TableCell>
+              <TableCell>
+                <strong>
+                  {filteredBills
+                    .reduce((sum, bill) => {
+                      const { balance } = calculateBillBalance(
+                        bill,
+                        bill.customerId
+                      );
+                      return sum + (balance < 0 ? Math.abs(balance) : 0);
+                    }, 0)
+                    .toFixed(3)}
+                  g
+                </strong>
+              </TableCell>
+              <TableCell></TableCell>
+            </TableRow>
+          </TableFooter>
         </Table>
       </TableContainer>
 
@@ -364,13 +419,13 @@ const CustomerReport = () => {
           {selectedBill && (
             <>
               <Typography variant="h6" gutterBottom>
-                Bill Details - BILL-{selectedBill.id}
+                Bill Details - {selectedBill.billNo}
               </Typography>
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body1">
                   <strong>Date:</strong>{" "}
-                  {new Date(selectedBill.createdAt).toLocaleDateString()}
+                  {new Date(selectedBill.date).toLocaleDateString()}
                 </Typography>
                 <Typography variant="body1">
                   <strong>Customer:</strong>{" "}
@@ -378,138 +433,106 @@ const CustomerReport = () => {
                     ?.name || "Unknown"}
                 </Typography>
                 <Typography variant="body1">
-                  <strong>Gold Rate:</strong> {selectedBill.goldRate}
+                  <strong>Total Purity:</strong>{" "}
+                  {selectedBill.totalPurity.toFixed(3)}g
+                </Typography>
+                <Typography variant="body1">
+                  <strong>Balance:</strong>{" "}
+                  {calculateBillBalance(selectedBill) > 0
+                    ? `Customer owes: ${calculateBillBalance(
+                        selectedBill
+                      ).toFixed(3)}g`
+                    : `Owner owes: ${Math.abs(
+                        calculateBillBalance(selectedBill)
+                      ).toFixed(3)}g`}
                 </Typography>
               </Box>
 
+              <Typography variant="subtitle1" gutterBottom>
+                Items
+              </Typography>
               <TableContainer component={Paper} sx={{ mb: 2 }}>
                 <Table>
                   <TableHead>
                     <TableRow>
                       <TableCell>Coin</TableCell>
-                      <TableCell>No</TableCell>
-                      <TableCell>%</TableCell>
-                      <TableCell>Touch</TableCell>
+                      <TableCell>Quantity</TableCell>
                       <TableCell>Weight</TableCell>
                       <TableCell>Purity</TableCell>
-                      <TableCell>Amount</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {selectedBill.items.map((item, index) => (
                       <TableRow key={index}>
-                        <TableCell>{item.coinValue}</TableCell>
+                        <TableCell>{item.coinValue}g</TableCell>
                         <TableCell>{item.quantity}</TableCell>
-                        <TableCell>{item.percentage}</TableCell>
-                        <TableCell>{item.touch}</TableCell>
                         <TableCell>{item.weight.toFixed(3)}</TableCell>
                         <TableCell>{item.purity.toFixed(3)}</TableCell>
-                        <TableCell>
-                          {(item.purity * selectedBill.goldRate).toFixed(2)}
-                        </TableCell>
                       </TableRow>
                     ))}
-                    <TableRow>
-                      <TableCell colSpan={4}>
-                        <strong>Total</strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>
-                          {selectedBill.items
-                            .reduce((sum, item) => sum + item.weight, 0)
-                            .toFixed(3)}
-                        </strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>
-                          {selectedBill.items
-                            .reduce((sum, item) => sum + item.purity, 0)
-                            .toFixed(3)}
-                        </strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>
-                          {selectedBill.items
-                            .reduce(
-                              (sum, item) =>
-                                sum + item.purity * selectedBill.goldRate,
-                              0
-                            )
-                            .toFixed(2)}
-                        </strong>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell colSpan={6}>
-                        <strong>Hallmark or MC Charges</strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>
-                          {selectedBill.hallmarkCharges?.toFixed(2) || "0.00"}
-                        </strong>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell colSpan={6}>
-                        <strong>Total Amount</strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>
-                          {(
-                            selectedBill.items.reduce(
-                              (sum, item) =>
-                                sum + item.purity * selectedBill.goldRate,
-                              0
-                            ) + (selectedBill.hallmarkCharges || 0)
-                          ).toFixed(2)}
-                        </strong>
-                      </TableCell>
-                    </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>
 
-              {selectedBill.receivedDetails &&
-                selectedBill.receivedDetails.length > 0 && (
-                  <>
-                    <Typography variant="h6" gutterBottom>
-                      Received Details
+              <Typography variant="subtitle1" gutterBottom>
+                Received Details
+              </Typography>
+              {selectedBill.receivedDetails?.length > 0 ? (
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Purity Weight</TableCell>
+                        <TableCell>Amount</TableCell>
+                        <TableCell>Paid Amount</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {selectedBill.receivedDetails.map((detail, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {new Date(detail.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {detail.givenGold ? "Gold" : "Cash"}
+                          </TableCell>
+                          <TableCell>
+                            {detail.purityWeight?.toFixed(3) || "-"}
+                          </TableCell>
+                          <TableCell>
+                            {detail.amount?.toFixed(2) || "-"}
+                          </TableCell>
+                          <TableCell>
+                            {detail.paidAmount?.toFixed(2) || "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2">No received details</Typography>
+              )}
+
+              <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                Advance Payments
+              </Typography>
+              {transactions
+                .filter(
+                  (txn) =>
+                    txn.customerId === selectedBill.customerId &&
+                    new Date(txn.date) <= new Date(selectedBill.date)
+                )
+                .map((txn, index) => (
+                  <Box key={index} sx={{ mb: 1 }}>
+                    <Typography variant="body2">
+                      {new Date(txn.date).toLocaleDateString()} - Advance:{" "}
+                      {txn.purity?.toFixed(3) || 0}g
                     </Typography>
-                    <TableContainer component={Paper}>
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Date</TableCell>
-                            <TableCell>Gold Rate</TableCell>
-                            <TableCell>Gold</TableCell>
-                            <TableCell>Touch</TableCell>
-                            <TableCell>Purity WT</TableCell>
-                            <TableCell>Amount</TableCell>
-                            <TableCell>Hallmark</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {selectedBill.receivedDetails.map((detail, index) => (
-                            <TableRow key={index}>
-                              <TableCell>
-                                {detail.date ||
-                                  new Date().toISOString().split("T")[0]}
-                              </TableCell>
-                              <TableCell>{detail.goldRate}</TableCell>
-                              <TableCell>{detail.givenGold || "-"}</TableCell>
-                              <TableCell>{detail.touch || "-"}</TableCell>
-                              <TableCell>
-                                {detail.purityWeight.toFixed(3)}
-                              </TableCell>
-                              <TableCell>{detail.amount.toFixed(2)}</TableCell>
-                              <TableCell>{detail.hallmark || "0.00"}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </>
-                )}
+                  </Box>
+                ))}
 
               <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end" }}>
                 <Button variant="contained" onClick={handleCloseModal}>

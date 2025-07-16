@@ -141,7 +141,11 @@ const deleteStock = async (req, res) => {
 
 const reduceStock = async (req, res) => {
   try {
+
+    
     const { coinType, gram, quantity, reason } = req.body;
+
+    
     const stock = await prisma.coinStock.findFirst({
       where: { coinType, gram: parseFloat(gram) },
     });
@@ -183,6 +187,51 @@ const reduceStock = async (req, res) => {
   }
 };
 
+const incrementStock = async (req, res) => {
+  try {
+    console.log("rrrrrrrrrrrrrrrrrrrrrrrrrr", req.body)
+
+    const { coinType, gram, quantity, reason } = req.body;
+    const stock = await prisma.coinStock.findFirst({
+      where: { coinType, gram: parseFloat(gram) },
+    });
+
+    if (!stock) return res.status(404).json({ message: "Stock not found" });
+  
+    const weightToAdd = parseFloat(gram) * parseInt(quantity);
+    const purityToAdd =
+      (parseFloat(stock.touch) * parseFloat(gram) * parseInt(quantity)) / 100;
+
+      console.log("ssssssssssssss", stock, weightToAdd, purityToAdd)
+
+    const updatedStock = await prisma.coinStock.update({
+      where: { id: stock.id },
+      data: {
+        quantity: stock.quantity + parseInt(quantity),
+        totalWeight: parseFloat(stock.totalWeight) + weightToAdd,
+        purity: parseFloat(stock.purity) + purityToAdd,
+        stockLogs: {
+          create: {
+            coinType,
+            gram: parseFloat(gram),
+            quantity: parseInt(quantity),
+            gram: parseFloat(gram),
+            changeType: "Add After Delete Bill",
+            reason,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Stock added successfully",
+      data: updatedStock,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error adding stock", error });
+  }
+};
+
 const getAllLogs = async (req, res) => {
   try {
     const logs = await prisma.stockLog.findMany({
@@ -201,4 +250,5 @@ module.exports = {
   deleteStock,
   reduceStock,
   getAllLogs,
+  incrementStock
 };

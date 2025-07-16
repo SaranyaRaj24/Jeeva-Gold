@@ -13,6 +13,7 @@ import {
   TextField,
   Button,
   TablePagination,
+  TableFooter
 } from "@mui/material";
 import { BACKEND_SERVER_URL } from "../../Config/Config";
 
@@ -162,9 +163,7 @@ const DailySalesReport = () => {
           borderRadius: 2,
         }}
       >
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Total Sales: ₹{metrics.totalSales.toFixed(2)}
-        </Typography>
+       
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Total Weight: {metrics.totalWeight.toFixed(3)} g
         </Typography>
@@ -174,18 +173,7 @@ const DailySalesReport = () => {
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Pure Received: {metrics.pureReceived.toFixed(3)} g
         </Typography>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Cash Received: ₹{metrics.cashReceived.toFixed(2)}
-        </Typography>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Hallmark Received: ₹{metrics.hallmarkReceived.toFixed(2)}
-        </Typography>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Outstanding Cash: ₹{metrics.outstandingCash.toFixed(2)}
-        </Typography>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Outstanding Hallmark: ₹{metrics.outstandingHallmark.toFixed(2)}
-        </Typography>
+        
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Number of Bills: {filteredBills.length}
         </Typography>
@@ -200,11 +188,9 @@ const DailySalesReport = () => {
               <TableCell>Total Weight</TableCell>
               <TableCell>Total Purity</TableCell>
               <TableCell>Total Amount</TableCell>
-              <TableCell>Cash Received</TableCell>
-              <TableCell>Hallmark Received</TableCell>
+              <TableCell>Amount Received</TableCell>
               <TableCell>Pure Received</TableCell>
               <TableCell>Cash Balance</TableCell> 
-              <TableCell>Hallmark Balance</TableCell>
               <TableCell>Pure Balance</TableCell>
             </TableRow>
           </TableHead>
@@ -244,12 +230,11 @@ const DailySalesReport = () => {
                 return (
                   <TableRow key={bill.id}>
                     <TableCell>BILL-{bill.id}</TableCell>
-                    <TableCell>{bill.customerId || "Unknown"}</TableCell>
+                    <TableCell>{bill.customer?.name || "Unknown"}</TableCell>
                     <TableCell>{totalWeight.toFixed(3)}</TableCell>
                     <TableCell>{totalPurity.toFixed(3)}</TableCell>
                     <TableCell>₹{totalAmount.toFixed(2)}</TableCell>
-                    <TableCell>₹{received.cash.toFixed(2)}</TableCell>
-                    <TableCell>₹{received.hallmark.toFixed(2)}</TableCell>
+                    <TableCell>₹{(received.cash+received.hallmark).toFixed(2)}</TableCell>
                     <TableCell>{received.pure.toFixed(3)} g</TableCell>
                     <TableCell
                       sx={{
@@ -257,16 +242,9 @@ const DailySalesReport = () => {
                         color: "success.main", 
                       }}
                     >
-                      ₹{cashBalance.toFixed(2)}
+                      ₹{(cashBalance+hallmarkBalance).toFixed(2)}
                     </TableCell>
-                    <TableCell
-                      sx={{
-                        color:
-                          hallmarkBalance > 0 ? "error.main" : "success.main",
-                      }}
-                    >
-                      ₹{hallmarkBalance.toFixed(2)}
-                    </TableCell>
+                   
                     <TableCell
                       sx={{
                         color: pureBalance > 0 ? "error.main" : "success.main",
@@ -278,6 +256,29 @@ const DailySalesReport = () => {
                 );
               })}
           </TableBody>
+          <TableFooter>
+  <TableRow sx={{ backgroundColor: "#f0f0f0" }}>
+    <TableCell colSpan={2}><strong>Total</strong></TableCell>
+    <TableCell><strong>{metrics.totalWeight.toFixed(3)}</strong></TableCell>
+    <TableCell><strong>{metrics.totalPurity.toFixed(3)}</strong></TableCell>
+    <TableCell><strong>₹{metrics.totalSales.toFixed(2)}</strong></TableCell>
+    <TableCell>
+      <strong>
+        ₹{(metrics.cashReceived + metrics.hallmarkReceived).toFixed(2)}
+      </strong>
+    </TableCell>
+    <TableCell>
+      <strong>{metrics.pureReceived.toFixed(3)} g</strong>
+    </TableCell>
+    <TableCell>
+      <strong>₹{metrics.outstandingCash.toFixed(2)}</strong>
+    </TableCell>
+    <TableCell>
+      <strong>{metrics.outstandingPure.toFixed(3)} g</strong>
+    </TableCell>
+  </TableRow>
+</TableFooter>
+
         </Table>
       </TableContainer>
 

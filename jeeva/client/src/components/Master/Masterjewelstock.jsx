@@ -10,14 +10,16 @@ const Masterjewelstock = () => {
     jewelName: "",
     weight: "",
     stoneWeight: "",
-    touch: "",
     finalWeight: "",
+    touch: "",
     purityValue: "",
   });
 
   const [entries, setEntries] = useState([]);
   const [showFormPopup, setShowFormPopup] = useState(false);
   const [totalPurity, setTotalPurity] = useState(0);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editId, setEditId] = useState(null);
 
   useEffect(() => {
     fetchEntries();
@@ -50,6 +52,7 @@ const Masterjewelstock = () => {
 
     const weight = parseFloat(updatedData.weight) || 0;
     const stoneWeight = parseFloat(updatedData.stoneWeight) || 0;
+
     const finalWeight = weight - stoneWeight;
     updatedData.finalWeight = finalWeight.toFixed(3);
 
@@ -63,8 +66,14 @@ const Masterjewelstock = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${BACKEND_SERVER_URL}/api/jewel-stock`, {
-        method: "POST",
+      const url = isEditMode
+        ? `${BACKEND_SERVER_URL}/api/jewel-stock/${editId}`
+        : `${BACKEND_SERVER_URL}/api/jewel-stock`;
+
+      const method = isEditMode ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
@@ -72,12 +81,22 @@ const Masterjewelstock = () => {
       if (!response.ok) throw new Error("Failed to save entry");
 
       const newEntry = await response.json();
-      const updatedEntries = [...entries, newEntry];
+
+      let updatedEntries;
+      if (isEditMode) {
+        updatedEntries = entries.map((entry) =>
+          entry.id === editId ? newEntry : entry
+        );
+        toast.success("Entry updated successfully!");
+      } else {
+        updatedEntries = [...entries, newEntry];
+        toast.success("Stock added successfully!");
+      }
+
       setEntries(updatedEntries);
       calculateTotalPurity(updatedEntries);
       resetForm();
       setShowFormPopup(false);
-      toast.success("Stock added successfully!");
     } catch (error) {
       console.error(error);
       toast.error("Error saving entry.");
@@ -89,10 +108,52 @@ const Masterjewelstock = () => {
       jewelName: "",
       weight: "",
       stoneWeight: "",
-      touch: "",
       finalWeight: "",
+      touch: "",
       purityValue: "",
     });
+    setIsEditMode(false);
+    setEditId(null);
+  };
+
+  const handleEdit = (entry) => {
+    setFormData({
+      jewelName: entry.jewelName,
+      weight: entry.weight,
+      stoneWeight: entry.stoneWeight,
+      finalWeight: entry.finalWeight,
+      touch: entry.touch,
+      purityValue: entry.purityValue,
+    });
+    setEditId(entry.id);
+    setIsEditMode(true);
+    setShowFormPopup(true);
+  };
+
+  const handleDelete = async (id) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this entry?"
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const response = await fetch(
+        `${BACKEND_SERVER_URL}/api/jewel-stock/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to delete entry");
+
+      const updatedEntries = entries.filter((entry) => entry.id !== id);
+      setEntries(updatedEntries);
+      calculateTotalPurity(updatedEntries);
+      toast.success("Entry deleted successfully!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error deleting entry.");
+    }
   };
 
   return (
@@ -106,10 +167,13 @@ const Masterjewelstock = () => {
       {showFormPopup && (
         <div className="popup-overlay">
           <div className="popup-content">
-            <h3>Enter Jewel Stock Details</h3>
+            <h3>{isEditMode ? "Edit" : "Enter"} Jewel Stock Details</h3>
             <button
               className="close-btn"
-              onClick={() => setShowFormPopup(false)}
+              onClick={() => {
+                setShowFormPopup(false);
+                resetForm();
+              }}
             >
               ×
             </button>
@@ -153,8 +217,11 @@ const Masterjewelstock = () => {
                   type="number"
                   name="finalWeight"
                   value={formData.finalWeight}
-                  readOnly
-                  className="read-only"
+                  onChange={handleChange}
+                  step="any"
+                  min="0"
+                  readOnly={!isEditMode}
+                  className={!isEditMode ? "read-only" : ""}
                 />
               </div>
               <div className="form-group">
@@ -176,13 +243,16 @@ const Masterjewelstock = () => {
                   type="number"
                   name="purityValue"
                   value={formData.purityValue}
-                  readOnly
-                  className="read-only"
+                  onChange={handleChange}
+                  step="any"
+                  min="0"
+                  readOnly={!isEditMode}
+                  className={!isEditMode ? "read-only" : ""}
                 />
               </div>
               <div className="button-group">
                 <button type="submit" className="submit-btn">
-                  Save
+                  {isEditMode ? "Update" : "Save"}
                 </button>
               </div>
             </form>
@@ -195,45 +265,65 @@ const Masterjewelstock = () => {
         {entries.length === 0 ? (
           <p>No entries yet. Please add some jewel stock entries.</p>
         ) : (
-          <>
-            <table className="entries-table">
-              <thead>
-                <tr>
-                  <th>SI. No.</th>
-                  <th>Jewel Name</th>
-                  <th>Weight (g)</th>
-                  <th>Stone Wt. (g)</th>
-                  <th>Final Wt. (g)</th>
-                  <th>Touch (%)</th>
-                  <th>Purity (g)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry, index) => (
-                  <tr key={entry.id}>
-                    <td>{index + 1}</td>
-                    <td>{entry.jewelName}</td>
-                    <td>{entry.weight}</td>
-                    <td>{entry.stoneWeight}</td>
-                    <td>{entry.finalWeight}</td>
-                    <td>{entry.touch}</td>
-                    <td>{entry.purityValue}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td
-                    colSpan="6"
-                    style={{ textAlign: "right", fontWeight: "bold" }}
-                  >
-                    Total Purity:
+          <table className="entries-table">
+            <thead>
+              <tr>
+                <th>SI. No.</th>
+                <th>Jewel Name</th>
+                <th>Weight (g)</th>
+                <th>Stone Wt. (g)</th>
+                <th>Final Wt. (g)</th>
+                <th>Touch (%)</th>
+                <th>Purity (g)</th>
+                <th>Edit</th>
+                <th>Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry, index) => (
+                <tr key={entry.id}>
+                  <td>{index + 1}</td>
+                  <td>{entry.jewelName}</td>
+                  <td>{entry.weight}</td>
+                  <td>{entry.stoneWeight}</td>
+                  <td>{entry.finalWeight}</td>
+                  <td>{entry.touch}</td>
+                  <td>{parseFloat(entry.purityValue).toFixed(3)}</td>
+                  <td>
+                    <button
+                      className="edit-btn"
+                      onClick={() => handleEdit(entry)}
+                      title="Edit"
+                    >
+                      ✏️
+                    </button>
                   </td>
-                  <td style={{ fontWeight: "bold" }}>{totalPurity}</td>
+                  <td>
+                    <button
+                      className="delete-btn"
+                      onClick={() => handleDelete(entry.id)}
+                      title="Delete"
+                    >
+                      🗑️
+                    </button>
+                  </td>
                 </tr>
-              </tfoot>
-            </table>
-          </>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td
+                  colSpan="7"
+                  style={{ textAlign: "right", fontWeight: "bold" }}
+                >
+                  Total Purity:
+                </td>
+                <td colSpan="2" style={{ fontWeight: "bold" }}>
+                  {totalPurity}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         )}
       </div>
     </div>

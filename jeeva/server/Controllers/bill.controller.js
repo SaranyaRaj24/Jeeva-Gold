@@ -6,13 +6,16 @@ const createBill = async (req, res) => {
     const {
       customerId,
       goldRate,
-      hallmarkCharges = 0,
+      hallmarkCharges,
+      hallmarkBalance,
       items = [],
       receivedDetails = [],
       totalWeight,
       totalPurity,
       totalAmount,
     } = req.body;
+
+    console.log("req body", req.body);
 
     if (
       totalWeight === undefined ||
@@ -36,8 +39,9 @@ const createBill = async (req, res) => {
         data: {
           billNo,
           customerId: parseInt(customerId),
-          goldRate: parseFloat(goldRate),
+          goldRate: parseFloat(goldRate) || 0,
           hallmarkCharges: parseFloat(hallmarkCharges),
+          hallmarkBalance: parseFloat(hallmarkBalance),
           totalWeight: parseFloat(totalWeight),
           totalPurity: parseFloat(totalPurity),
           totalAmount: parseFloat(totalAmount),
@@ -50,18 +54,19 @@ const createBill = async (req, res) => {
               weight: parseFloat(item.weight),
               purity: parseFloat(item.purity),
               amount: item.amount,
+              goldRate: item.goldRate,
             })),
           },
           receivedDetails: {
             create: receivedDetails.map((r) => ({
               date: new Date(r.date),
-
-              goldRate: parseFloat(r.goldRate),
+              goldRate: parseFloat(r.goldRate) || 0,
               givenGold: parseFloat(r.givenGold),
               touch: parseFloat(r.touch),
               purityWeight: parseFloat(r.purityWeight),
               amount: parseFloat(r.amount),
-              hallmark: parseFloat(r.hallmark),
+              paidAmount: parseFloat(r.paidAmount),
+              hallmark: parseFloat(r.hallmark) || 0,
             })),
           },
         },
@@ -140,15 +145,7 @@ const deleteBill = async (req, res) => {
     if (!existingBill) {
       return res.status(404).json({ message: "Bill not found" });
     }
-
-    await prisma.receivedDetail.deleteMany({
-      where: { billId: parsedId },
-    });
-
-    await prisma.billItem.deleteMany({
-      where: { billId: parsedId },
-    });
-
+    
     await prisma.bill.delete({
       where: { id: parsedId },
     });
@@ -159,10 +156,13 @@ const deleteBill = async (req, res) => {
     return res.status(500).json({ message: "Failed to delete bill" });
   }
 };
+
 const addReceiveEntry = async (req, res) => {
   try {
     const { id } = req.params;
     const { receivedDetails = [] } = req.body;
+
+    console.log("reee", req.body);
 
     if (!receivedDetails.length) {
       return res.status(400).json({ error: "No receive details provided" });
@@ -187,24 +187,21 @@ const addReceiveEntry = async (req, res) => {
       return res.status(404).json({ error: "Bill not found" });
     }
 
-    const existingKeys = new Set(
-      existingBill.receivedDetails.map(
-        (d) => `${new Date(d.date).toISOString()}_${parseFloat(d.amount)}`
-      )
-    );
+    console.log("existing", existingBill);
 
     const sanitizedDetails = receivedDetails
-      .map(({ id, billId, createdAt, updatedAt, date, amount, ...rest }) => {
-        const cleanDate = sanitizeDate(date);
-        return {
-          ...rest,
-          amount: parseFloat(amount),
-          date: cleanDate,
-          _key: `${cleanDate}_${parseFloat(amount)}`,
-        };
-      })
-      .filter((detail) => !existingKeys.has(detail._key))
-      .map(({ _key, ...detail }) => detail);
+      .filter((detail) => !detail.id)
+      .map((detail) => ({
+        ...detail,
+        date: sanitizeDate(detail.date),
+        amount: parseFloat(detail.amount) || 0,
+        paidAmount: parseFloat(detail.paidAmount) || 0,
+        purityWeight: parseFloat(detail.purityWeight) || 0,
+        givenGold: parseFloat(detail.givenGold) || 0,
+        goldRate: parseFloat(detail.goldRate) || 0,
+        touch: parseFloat(detail.touch) || 0,
+        hallmark: parseFloat(detail.hallmark) || 0,
+      }));
 
     if (!sanitizedDetails.length) {
       return res.status(200).json({ message: "No new receive entries to add" });
@@ -215,9 +212,12 @@ const addReceiveEntry = async (req, res) => {
       0
     );
 
+    const hallbalance = req.body.hallmarkBalance;
+
     const updatedBill = await prisma.bill.update({
       where: { id: parseInt(id) },
       data: {
+        hallmarkBalance: parseFloat(hallbalance),
         receivedDetails: {
           create: sanitizedDetails,
         },
