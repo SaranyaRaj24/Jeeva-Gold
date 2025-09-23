@@ -187,3 +187,19 @@ model Entry {
   remarks    String?
   createdAt  DateTime @default(now())
 }
+
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  valueType   ValueType
+  purity      Float?   @default(0)
+  remarks     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum ValueType {
+  CashOrGold
+  Advance
+}

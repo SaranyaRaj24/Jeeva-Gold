@@ -11,6 +11,7 @@ import Master from "./components/Master/Master";
 import MasterCustomer from "./components/Master/Mastercustomer";
 import Masterjewelstock from "./components/Master/Masterjewelstock";
 import Cashgold from "./components/Master/Cashgold";
+import Expense from "./components/Master/Expense";
 import Customertrans from "./components/Customer/Customertrans";
 import Jobcard from "./components/Goldsmith/Jobcard";
 import AddCustomer from "./components/Billing/Addcustomer";
@@ -156,6 +157,7 @@ function App() {
           <Route path="customer" element={<MasterCustomer />} />
           <Route path="stock" element={<Masterjewelstock />} />
           <Route path="cashgold" element={<Cashgold />} />
+           <Route path="expense" element={<Expense />} />
         </Route>
         <Route path="/addcustomer" element={<AddCustomer />} />
       </Routes>

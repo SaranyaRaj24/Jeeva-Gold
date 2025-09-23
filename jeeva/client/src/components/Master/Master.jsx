@@ -125,6 +125,20 @@ const Master = () => {
                 Cash / Gold
               </button>
             </li>
+             <li>
+              <button
+                onClick={() => navigate("/master/expense")}
+                className={`nav-button ${
+                  isActive("/master/expense") ? "active" : ""
+                }`}
+                onMouseOver={(e) => (e.target.style.backgroundColor = "#333")}
+                onMouseOut={(e) =>
+                  (e.target.style.backgroundColor = "transparent")
+                }
+              >
+                Expense
+              </button>
+            </li>
           </ul>
           <button
             onClick={handleLogout}

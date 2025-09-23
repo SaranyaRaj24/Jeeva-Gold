@@ -18,36 +18,61 @@ const OverallReport = () => {
     setReportData([]);
 
     try {
-      const [customersRes, billsRes, jewelRes, coinRes, entriesRes] =
-        await Promise.all([
-          fetch(`${BACKEND_SERVER_URL}/api/customers`),
-          fetch(`${BACKEND_SERVER_URL}/api/bills`),
-          fetch(`${BACKEND_SERVER_URL}/api/jewel-stock`),
-          fetch(`${BACKEND_SERVER_URL}/api/v1/stocks`),
-          fetch(`${BACKEND_SERVER_URL}/api/entries`),
-        ]);
+      const [
+        customersRes,
+        billsRes,
+        jewelRes,
+        coinRes,
+        entriesRes,
+        expenseRes,
+      ] = await Promise.all([
+        fetch(`${BACKEND_SERVER_URL}/api/customers`),
+        fetch(`${BACKEND_SERVER_URL}/api/bills`),
+        fetch(`${BACKEND_SERVER_URL}/api/jewel-stock`),
+        fetch(`${BACKEND_SERVER_URL}/api/v1/stocks`),
+        fetch(`${BACKEND_SERVER_URL}/api/entries`),
+        fetch(`${BACKEND_SERVER_URL}/api/expenses/summary`),
+      ]);
 
       if (!customersRes.ok) throw new Error("Failed to fetch customers");
       if (!billsRes.ok) throw new Error("Failed to fetch bills");
       if (!jewelRes.ok) throw new Error("Failed to fetch jewel stock");
       if (!coinRes.ok) throw new Error("Failed to fetch coin stock");
       if (!entriesRes.ok) throw new Error("Failed to fetch entries");
+      if (!expenseRes.ok) throw new Error("Failed to fetch expense summary");
 
-      const [customers, bills, jewelData, coinData, entriesData] =
-        await Promise.all([
-          customersRes.json(),
-          billsRes.json(),
-          jewelRes.json(),
-          coinRes.json(),
-          entriesRes.json(),
-        ]);
+      const [
+        customers,
+        bills,
+        jewelData,
+        coinData,
+        entriesData,
+        expenseSummary,
+      ] = await Promise.all([
+        customersRes.json(),
+        billsRes.json(),
+        jewelRes.json(),
+        coinRes.json(),
+        entriesRes.json(),
+        expenseRes.json(),
+      ]);
+
+      let expenseCashOrGold = 0;
+      let expenseAdvance = 0;
+
+      expenseSummary.forEach((exp) => {
+        if (exp.valueType === "CashOrGold") {
+          expenseCashOrGold += parseFloat(exp._sum?.purity || 0);
+        }
+        if (exp.valueType === "Advance") {
+          expenseAdvance += parseFloat(exp._sum?.purity || 0);
+        }
+      });
 
       const manualEntriesPurity = entriesData.reduce(
         (sum, entry) => sum + parseFloat(entry.purity || 0),
         0
-      );  
-
-      {/* new commit  */}
+      );
 
       let receivedEntriesPurity = 0;
       bills.forEach((bill) => {
@@ -133,12 +158,17 @@ const OverallReport = () => {
 
       const { totalCustomerBalance } = calculateTotalBalances(bills);
 
+      const adjustedCashGoldEntriesPurity =
+        totalCashGoldEntriesPurity - expenseCashOrGold;
+
+      const adjustedAdvancesGold = advancesGold - expenseAdvance;
+
       const overallValue =
         totalCustomerBalance +
-        totalCashGoldEntriesPurity +
+        adjustedCashGoldEntriesPurity +
         totalCoinPurity +
         totalJewelPurity -
-        advancesGold;
+        adjustedAdvancesGold;
 
       setReportData([
         {
@@ -149,7 +179,7 @@ const OverallReport = () => {
         },
         {
           label: "Cash/Gold (Entries Purity)",
-          value: `${formatToFixed3Strict(totalCashGoldEntriesPurity)}g`,
+          value: `${formatToFixed3Strict(adjustedCashGoldEntriesPurity)}g`,
           tooltip: `Total gold purity from all manual Cash/Gold entries in the system (Sum of manual entries ${formatToFixed3Strict(
             manualEntriesPurity
           )}g and received bill entries ${formatToFixed3Strict(
@@ -172,7 +202,7 @@ const OverallReport = () => {
         },
         {
           label: "Advances in Gold (Purity)",
-          value: `${formatToFixed3Strict(advancesGold)}g`,
+          value: `${formatToFixed3Strict(adjustedAdvancesGold)}g`,
           tooltip:
             "Total gold purity equivalent from all customer advance transactions",
         },

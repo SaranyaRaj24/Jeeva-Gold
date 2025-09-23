@@ -31,6 +31,7 @@ const createTransaction = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 const getAllTransactions = async (req, res) => {
   try {
     const { customerId } = req.params;

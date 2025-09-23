@@ -322,6 +322,7 @@ const Billing = () => {
   };
 
   const handlePrint = () => {
+    
   const printContent = (
     <PrintableBill
       billNo={billNo}
