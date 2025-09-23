@@ -14,7 +14,7 @@ exports.createExpense = async (req, res) => {
     const newExpense = await prisma.expense.create({
       data: {
         date: new Date(date),
-        valueType: valueType === "cash/gold" ? "CashOrGold" : "Advance",
+        valueType: valueType === "CashOrGold" ? "CashOrGold" : "Advance",
         purity: purity ? parseFloat(purity) : 0,
         remarks: remarks || null,
       },
@@ -89,7 +89,7 @@ exports.updateExpense = async (req, res) => {
       where: { id: parseInt(id) },
       data: {
         date: date ? new Date(date) : existingExpense.date,
-        valueType: valueType === "cash/gold" ? "CashOrGold" : "Advance" || existingExpense.valueType,
+        valueType: valueType === "CashOrGold" ? "CashOrGold" : "Advance" || existingExpense.valueType,
         purity:
           purity !== undefined ? parseFloat(purity) : existingExpense.purity,
         remarks: remarks !== undefined ? remarks : existingExpense.remarks,

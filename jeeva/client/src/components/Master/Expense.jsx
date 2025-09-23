@@ -146,9 +146,7 @@ const MasterExpense = () => {
       setAvailableCashGold(totalCashGold - expenseCashOrGold);
       setAvailableAdvances(advGold - expenseAdvance);
 
-      setTotalCashGoldEntriesPurity(
-        totalCashGold - expenseCashOrGold
-      );
+      setTotalCashGoldEntriesPurity(totalCashGold - expenseCashOrGold);
 
       setAdvancesGold(advGold - expenseAdvance);
     } catch (error) {
@@ -217,6 +215,7 @@ const MasterExpense = () => {
               }
             : expense
         );
+        await fetchLimits();
         toast.success("Expense updated successfully!");
       } else {
         updatedExpenses = [
@@ -226,6 +225,7 @@ const MasterExpense = () => {
             valueType: mapValueTypeToFrontend(newExpense.valueType),
           },
         ];
+        await fetchLimits();
         toast.success("Expense added successfully!");
       }
 
@@ -233,6 +233,7 @@ const MasterExpense = () => {
       setTotalPurity(
         updatedExpenses.reduce((sum, e) => sum + (parseFloat(e.purity) || 0), 0)
       );
+      
       resetForm();
       setShowFormPopup(false);
     } catch (error) {
@@ -285,6 +286,7 @@ const MasterExpense = () => {
         updatedExpenses.reduce((sum, e) => sum + (parseFloat(e.purity) || 0), 0)
       );
       toast.success("Expense deleted successfully!");
+      await fetchLimits();
     } catch (error) {
       console.error(error);
       toast.error("Error deleting expense.");
